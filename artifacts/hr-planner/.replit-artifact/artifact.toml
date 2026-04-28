@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "HR Planner"
+version = "1.0.0"
+id = "artifacts/hr-planner"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 25922
+
+[services.development]
+run = "pnpm --filter @workspace/hr-planner run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/hr-planner", "run", "build" ]
+publicDir = "artifacts/hr-planner/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25922"
+BASE_PATH = "/"
