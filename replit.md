@@ -21,7 +21,7 @@ A full-stack HR Planning web application for a Luxembourg-based organization.
 - **Language**: TypeScript throughout
 
 ## Database Schema
-Tables: `employees`, `offices`, `office_employees`, `shift_codes`, `week_templates`, `monthly_configs`, `public_holidays`, `planning_months`, `planning_entries`
+Tables: `employees`, `offices`, `office_employees`, `shift_codes`, `week_templates`, `monthly_configs`, `public_holidays`, `planning_months`, `planning_entries`, `permanence_overrides`
 
 ## Pre-loaded Data (2026)
 - **Shift codes**: X78-X82 (onsite), TT2-TT9 (homework), CW4-CW9 (cowork), C0 (holiday, 7.6h), JL (CCT-FHL day, 7.6h)

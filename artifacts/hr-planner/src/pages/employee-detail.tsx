@@ -304,17 +304,6 @@ export default function EmployeeDetail() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Permanence Level</Label>
-                  <Select value={(form.permanenceLevel ?? "none") as string} onValueChange={(v) => setForm({ ...form, permanenceLevel: v === "none" ? null : v })}>
-                    <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      <SelectItem value="1">Level 1 (Primary)</SelectItem>
-                      <SelectItem value="2">Level 2 (Escalation)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
               </div>
               <div className="space-y-1.5">
                 <Label>Preferred JL Weekday</Label>

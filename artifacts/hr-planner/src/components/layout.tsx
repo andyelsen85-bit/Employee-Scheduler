@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Users, Calendar, Settings, Home, Building2, Clock, CalendarDays, CalendarRange } from "lucide-react";
+import { Users, Calendar, Home, Building2, Clock, CalendarDays, CalendarRange, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: Home },
   { name: "Planning", href: "/planning", icon: Calendar },
+  { name: "Permanence", href: `/permanence/${new Date().getFullYear()}`, icon: Shield },
   { name: "Employees", href: "/employees", icon: Users },
   { name: "Offices", href: "/config/offices", icon: Building2 },
   { name: "Shift Codes", href: "/config/shift-codes", icon: Clock },
@@ -25,7 +26,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <div className="flex flex-1 flex-col overflow-y-auto py-4">
           <nav className="flex-1 space-y-1 px-3">
             {navigation.map((item) => {
-              const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
+              const basePath = item.href.startsWith("/permanence") ? "/permanence" : item.href;
+              const isActive = location === item.href || (basePath !== "/" && location.startsWith(basePath));
               return (
                 <Link
                   key={item.name}

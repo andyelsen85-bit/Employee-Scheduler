@@ -256,11 +256,9 @@ export default function Planning() {
                         </th>
                       );
                     })}
-                    <th className="px-3 py-2 text-center min-w-[80px] sticky right-0 bg-muted/50 z-20 border-l shadow-[-1px_0_0_0_var(--color-border)]">
+                    <th className="px-3 py-2 text-center min-w-[90px] sticky right-0 bg-muted/50 z-20 border-l shadow-[-1px_0_0_0_var(--color-border)]">
                       <div className="font-semibold">Planned</div>
-                      {officialHours !== null && (
-                        <div className="text-muted-foreground font-normal text-[10px]">Official: {officialHours}h</div>
-                      )}
+                      <div className="text-muted-foreground font-normal text-[10px]">/ Target · Diff</div>
                     </th>
                   </tr>
                 </thead>
@@ -351,6 +349,9 @@ export default function Planning() {
                         })}
                         <td className="px-3 py-2 text-center sticky right-0 bg-card z-10 border-l shadow-[-1px_0_0_0_var(--color-border)]">
                           <div className="font-bold text-sm">{planned.toFixed(1)}h</div>
+                          {empOfficialHours !== null && (
+                            <div className="text-muted-foreground text-[10px]">/ {empOfficialHours.toFixed(1)}h</div>
+                          )}
                           {diff !== null && (
                             <div className={`text-xs font-semibold ${over ? 'text-amber-600' : under ? 'text-blue-600' : 'text-green-600'}`}>
                               {diff >= 0 ? `+${diff.toFixed(1)}` : diff.toFixed(1)}h
