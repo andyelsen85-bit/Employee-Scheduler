@@ -68,7 +68,8 @@ export type PlanningViolation = {
 const HOMEWORK_DAY_LIMIT = 35;
 const PRM_MAX = 10;
 const PRM_MIN = -10;
-const MIN_ONSITE_RATIO = 0.5; // at least 50% of shift days must be onsite
+const MIN_ONSITE_RATIO = 0.5;  // hard floor used only for violation checks
+const ONSITE_PLAN_RATIO = 0.6; // target planning ratio: ~60% onsite / ~40% homework for eligible employees
 
 function getWorkingDays(year: number, month: number, publicHolidayDates: string[]): string[] {
   const start = startOfMonth(new Date(year, month - 1));
@@ -238,7 +239,12 @@ function pickJlSubstitutionDates(
 
 /**
  * Assign one location-type per ISO week so employees stay in the same place all week.
- * Ensures at least MIN_ONSITE_RATIO of weeks are onsite.
+ *
+ * Target distribution (when remote options exist):
+ *   ~60 % onsite (ONSITE_PLAN_RATIO) / ~40 % homework+cowork.
+ * The 50 % hard minimum (MIN_ONSITE_RATIO) is only used for violation checks, not here.
+ *
+ * For employees who cannot work remotely at all, every week is onsite regardless.
  */
 function predetermineWeeklyTypes(
   weekKeys: string[],
@@ -248,22 +254,31 @@ function predetermineWeeklyTypes(
   if (weekKeys.length === 0) return {};
 
   const numWeeks = weekKeys.length;
-  const minOnsiteWeeks = Math.ceil(numWeeks * MIN_ONSITE_RATIO);
-  const remaining = numWeeks - minOnsiteWeeks;
+
+  // Use ONSITE_PLAN_RATIO (60%) as the target when the employee has remote options;
+  // if no remote options exist, plan all weeks onsite.
+  const hasRemote = canHomework || canCowork;
+  const targetOnsiteWeeks = hasRemote
+    ? Math.ceil(numWeeks * ONSITE_PLAN_RATIO)
+    : numWeeks;
+  // Remaining weeks go to homework and/or cowork (40% target for eligible employees)
+  const remaining = numWeeks - targetOnsiteWeeks;
 
   let homeworkWeeks = 0;
   let coworkWeeks = 0;
-  if (canHomework && canCowork) {
-    homeworkWeeks = Math.ceil(remaining / 2);
-    coworkWeeks = remaining - homeworkWeeks;
-  } else if (canHomework) {
-    homeworkWeeks = remaining;
-  } else if (canCowork) {
-    coworkWeeks = remaining;
+  if (remaining > 0) {
+    if (canHomework && canCowork) {
+      homeworkWeeks = Math.ceil(remaining / 2);
+      coworkWeeks = remaining - homeworkWeeks;
+    } else if (canHomework) {
+      homeworkWeeks = remaining;
+    } else if (canCowork) {
+      coworkWeeks = remaining;
+    }
   }
 
   const weekTypes: Array<"onsite" | "homework" | "cowork"> = [
-    ...Array<"onsite">(minOnsiteWeeks).fill("onsite"),
+    ...Array<"onsite">(targetOnsiteWeeks).fill("onsite"),
     ...Array<"homework">(homeworkWeeks).fill("homework"),
     ...Array<"cowork">(coworkWeeks).fill("cowork"),
   ];
