@@ -139,7 +139,9 @@ export default function Planning() {
           <div className="flex flex-wrap gap-3">
             {employees.map(emp => {
               const planned = getEmployeePlannedHours(emp.id);
-              const official = officialHours;
+              const official = officialHours !== null
+                ? Math.round(officialHours * ((emp.contractPercent ?? 100) / 100) * 10) / 10
+                : null;
               const diff = official !== null ? planned - official : null;
               const over = diff !== null && diff > 0;
               const under = diff !== null && diff < 0;
@@ -163,7 +165,11 @@ export default function Planning() {
                 <span className="font-medium text-muted-foreground">Total</span>
                 <span className="font-bold">{totalPlannedHours.toFixed(1)} h</span>
                 {officialHours !== null && (
-                  <span className="text-muted-foreground">/ {(officialHours * employees.length).toFixed(0)} h</span>
+                  <span className="text-muted-foreground">
+                    / {employees.reduce((sum, emp) =>
+                      sum + Math.round(officialHours * ((emp.contractPercent ?? 100) / 100) * 10) / 10, 0
+                    ).toFixed(1)} h
+                  </span>
                 )}
               </div>
             )}
@@ -224,7 +230,10 @@ export default function Planning() {
                 <tbody>
                   {employees.map(emp => {
                     const planned = getEmployeePlannedHours(emp.id);
-                    const diff = officialHours !== null ? planned - officialHours : null;
+                    const empOfficialHours = officialHours !== null
+                      ? Math.round(officialHours * ((emp.contractPercent ?? 100) / 100) * 10) / 10
+                      : null;
+                    const diff = empOfficialHours !== null ? planned - empOfficialHours : null;
                     const over = diff !== null && diff > 0;
                     const under = diff !== null && diff < 0;
                     return (

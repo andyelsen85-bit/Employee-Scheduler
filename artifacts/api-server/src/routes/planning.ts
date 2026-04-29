@@ -209,13 +209,16 @@ router.post("/planning/:year/:month/confirm", async (req, res): Promise<void> =>
     .where(and(eq(monthlyConfigsTable.year, year), eq(monthlyConfigsTable.month, month)));
 
   if (mc.length > 0) {
-    const contractualHours = mc[0].contractualHours;
+    const baseContractualHours = mc[0].contractualHours;
     const entries = await db
       .select()
       .from(planningEntriesTable)
       .where(eq(planningEntriesTable.planningMonthId, pm.id));
     const shiftCodeRows = await db.select().from(shiftCodesTable);
     const shiftHoursMap = new Map(shiftCodeRows.map((sc) => [sc.code, sc.hours]));
+    const empRows = await db.select().from(employeesTable);
+    const empContractPct: Record<number, number> = {};
+    for (const e of empRows) empContractPct[e.id] = e.contractPercent ?? 100;
 
     const plannedByEmployee: Record<number, number> = {};
     for (const entry of entries) {
@@ -226,7 +229,9 @@ router.post("/planning/:year/:month/confirm", async (req, res): Promise<void> =>
 
     for (const [empIdStr, planned] of Object.entries(plannedByEmployee)) {
       const empId = Number(empIdStr);
-      const diff = planned - contractualHours;
+      const pct = empContractPct[empId] ?? 100;
+      const empContractualHours = Math.round(baseContractualHours * (pct / 100) * 10) / 10;
+      const diff = planned - empContractualHours;
       if (diff !== 0) {
         await db
           .update(employeesTable)

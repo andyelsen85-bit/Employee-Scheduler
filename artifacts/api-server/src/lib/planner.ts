@@ -312,13 +312,21 @@ export function generatePlanning(params: {
     for (const o of offices) deskUsedByDateByOffice[d][o.id] = new Set();
   }
 
+  // Per-employee contractual hours scaled by contract percentage
+  // e.g. contractualHours=160h, contractPercent=80 → 128h
+  const empContractualHours: Record<number, number> = {};
+  for (const emp of employees) {
+    const pct = emp.contractPercent ?? 100;
+    empContractualHours[emp.id] = Math.round(contractualHours * (pct / 100) * 10) / 10;
+  }
+
   // Running balance for hour accuracy
   const remainingHours: Record<number, number> = {};
   const remainingShiftDays: Record<number, number> = {};
   for (const emp of employees) {
     const jlCount = jlAssignments[emp.id]?.size ?? 0;
     const reqOffCount = (requestedOffMap[emp.id] ?? new Set()).size;
-    remainingHours[emp.id] = contractualHours;
+    remainingHours[emp.id] = empContractualHours[emp.id];
     remainingShiftDays[emp.id] = workingDays.length - jlCount - reqOffCount;
   }
 
@@ -553,7 +561,7 @@ export function generatePlanning(params: {
 
   for (const emp of employees) {
     const planned = plannedHoursByEmployee[emp.id] ?? 0;
-    const prm = planned - contractualHours;
+    const prm = planned - (empContractualHours[emp.id] ?? contractualHours);
     if (prm > PRM_MAX || prm < PRM_MIN) {
       violations.push({
         date: `${year}-${String(month).padStart(2, "0")}`,
