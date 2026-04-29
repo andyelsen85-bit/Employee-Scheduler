@@ -257,10 +257,10 @@ export default function EmployeeDetail() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <Label>Permanence Group</Label>
-                  <Select value={String(form.permanenceGroup ?? "")} onValueChange={(v) => setForm({ ...form, permanenceGroup: v })}>
+                  <Select value={form.permanenceGroup ?? "none"} onValueChange={(v) => setForm({ ...form, permanenceGroup: v === "none" ? null : v })}>
                     <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">None</SelectItem>
+                      <SelectItem value="none">None</SelectItem>
                       <SelectItem value="1">Group 1</SelectItem>
                       <SelectItem value="2">Group 2</SelectItem>
                     </SelectContent>
@@ -268,10 +268,10 @@ export default function EmployeeDetail() {
                 </div>
                 <div className="space-y-1.5">
                   <Label>Permanence Level</Label>
-                  <Select value={String(form.permanenceLevel ?? "")} onValueChange={(v) => setForm({ ...form, permanenceLevel: v })}>
+                  <Select value={form.permanenceLevel ?? "none"} onValueChange={(v) => setForm({ ...form, permanenceLevel: v === "none" ? null : v })}>
                     <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">None</SelectItem>
+                      <SelectItem value="none">None</SelectItem>
                       <SelectItem value="1">Level 1 (Primary)</SelectItem>
                       <SelectItem value="2">Level 2 (Escalation)</SelectItem>
                     </SelectContent>
