@@ -117,7 +117,7 @@ router.post("/planning/:year/:month/generate", async (req, res): Promise<void> =
   }));
 
   const publicHolidayDates = holidays.filter((h) => h.country === "lu" || h.country === "all").map((h) => h.date);
-  const jlDates = (mc.jlDates as string[]) ?? [];
+  const jlDays = mc.jlDays ?? 0;
 
   const { entries, violations } = generatePlanning({
     year,
@@ -145,7 +145,7 @@ router.post("/planning/:year/:month/generate", async (req, res): Promise<void> =
       days: (t.days as Array<{ dayOfWeek: number; shiftCode: string | null }>) ?? [],
     })),
     publicHolidayDates,
-    jlDates,
+    jlDays,
     contractualHours: mc.contractualHours,
     requestedDaysOff: (parsed.data.requestedDaysOff ?? []).map((r) => ({
       employeeId: r.employeeId,

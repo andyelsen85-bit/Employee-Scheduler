@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
 import { useState } from "react";
-import { Save, Calendar } from "lucide-react";
+import { Save, CalendarDays } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const MONTH_NAMES = [
@@ -27,9 +27,9 @@ export default function MonthlyConfig() {
   const { toast } = useToast();
   const [filterYear, setFilterYear] = useState(2026);
   const [editingMonth, setEditingMonth] = useState<number | null>(null);
-  const [editForm, setEditForm] = useState<{ contractualHours: number; jlDatesStr: string }>({
+  const [editForm, setEditForm] = useState<{ contractualHours: number; jlDays: number }>({
     contractualHours: 160,
-    jlDatesStr: "",
+    jlDays: 0,
   });
 
   const { data: configs, isLoading } = useListMonthlyConfigs({
@@ -48,21 +48,16 @@ export default function MonthlyConfig() {
     setEditingMonth(month);
     setEditForm({
       contractualHours: config?.contractualHours ?? 160,
-      jlDatesStr: config ? (config.jlDates as string[]).join(", ") : "",
+      jlDays: config?.jlDays ?? 0,
     });
   };
 
   const handleSave = (month: number) => {
-    const jlDates = editForm.jlDatesStr
-      .split(",")
-      .map((d) => d.trim())
-      .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d));
-
     upsertConfig.mutate(
       {
         year: filterYear,
         month,
-        data: { contractualHours: editForm.contractualHours, jlDates },
+        data: { contractualHours: editForm.contractualHours, jlDays: editForm.jlDays },
       },
       {
         onSuccess: () => {
@@ -94,7 +89,7 @@ export default function MonthlyConfig() {
         </div>
 
         <p className="text-sm text-muted-foreground -mt-2">
-          Configure contractual hours and JL (CCT-FHL) day-off dates per month. These values are used by the planning algorithm.
+          Configure contractual hours and the number of JL (CCT-FHL) days per month. The planner distributes JL days across employees so no two share the same date.
         </p>
 
         {isLoading ? (
@@ -106,7 +101,7 @@ export default function MonthlyConfig() {
             {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => {
               const config = getConfig(month);
               const isEditing = editingMonth === month;
-              const jlDates = config ? (config.jlDates as string[]) : [];
+              const jlDays = config?.jlDays ?? 0;
 
               return (
                 <Card key={month} className={isEditing ? "ring-2 ring-primary" : ""}>
@@ -135,11 +130,14 @@ export default function MonthlyConfig() {
                           />
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">JL Dates (comma-separated, YYYY-MM-DD)</Label>
+                          <Label className="text-xs">JL Days (CCT-FHL days to distribute)</Label>
                           <Input
-                            value={editForm.jlDatesStr}
-                            onChange={(e) => setEditForm({ ...editForm, jlDatesStr: e.target.value })}
-                            placeholder="2026-01-30"
+                            type="number"
+                            min={0}
+                            max={5}
+                            step={1}
+                            value={editForm.jlDays}
+                            onChange={(e) => setEditForm({ ...editForm, jlDays: parseInt(e.target.value, 10) || 0 })}
                             className="h-8 text-sm"
                           />
                         </div>
@@ -156,10 +154,10 @@ export default function MonthlyConfig() {
                     ) : (
                       <>
                         <div className="text-2xl font-bold">{config?.contractualHours ?? "—"}<span className="text-sm font-normal text-muted-foreground">h</span></div>
-                        {jlDates.length > 0 && (
+                        {jlDays > 0 && (
                           <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <Calendar className="h-3 w-3" />
-                            {jlDates.length} JL {jlDates.length === 1 ? "day" : "days"}
+                            <CalendarDays className="h-3 w-3" />
+                            {jlDays} JL {jlDays === 1 ? "day" : "days"} to spread
                           </div>
                         )}
                         <Button size="sm" variant="outline" className="w-full h-7 text-xs" onClick={() => startEdit(month)}>

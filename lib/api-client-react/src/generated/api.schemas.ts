@@ -149,14 +149,15 @@ export interface MonthlyConfig {
   month: number;
   /** Total hours to plan this month (from PRMS doc) */
   contractualHours: number;
-  /** Dates of CCT-FHL JL days off this month */
-  jlDates: string[];
+  /** Number of CCT-FHL JL days available this month (distributed by the planner) */
+  jlDays: number;
   notes?: string | null;
 }
 
 export interface UpsertMonthlyConfigBody {
   contractualHours: number;
-  jlDates: string[];
+  /** Number of CCT-FHL JL days available this month */
+  jlDays: number;
   notes?: string | null;
 }
 

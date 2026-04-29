@@ -970,31 +970,26 @@ components:
         contractualHours:
           type: number
           description: "Total hours to plan this month (from PRMS doc)"
-        jlDates:
-          type: array
-          items:
-            type: string
-
-          description: "Dates of CCT-FHL JL days off this month"
+        jlDays:
+          type: integer
+          description: "Number of CCT-FHL JL days available this month (distributed by the planner)"
         notes:
           type: string
           nullable: true
-      required: [id, year, month, contractualHours, jlDates]
+      required: [id, year, month, contractualHours, jlDays]
 
     UpsertMonthlyConfigBody:
       type: object
       properties:
         contractualHours:
           type: number
-        jlDates:
-          type: array
-          items:
-            type: string
-
+        jlDays:
+          type: integer
+          description: "Number of CCT-FHL JL days available this month"
         notes:
           type: string
           nullable: true
-      required: [contractualHours, jlDates]
+      required: [contractualHours, jlDays]
 
     # PUBLIC HOLIDAYS
     PublicHoliday:

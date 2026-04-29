@@ -31,18 +31,18 @@ const LU_PUBLIC_HOLIDAYS_2026 = [
 ];
 
 const MONTHLY_CONFIGS_2026 = [
-  { month: 1, contractualHours: 160, jlDates: ["2026-01-30"] },
-  { month: 2, contractualHours: 160, jlDates: ["2026-02-27"] },
-  { month: 3, contractualHours: 168, jlDates: ["2026-03-27"] },
-  { month: 4, contractualHours: 160, jlDates: ["2026-04-30"] },
-  { month: 5, contractualHours: 146, jlDates: [] },
-  { month: 6, contractualHours: 160, jlDates: ["2026-06-30"] },
-  { month: 7, contractualHours: 176, jlDates: ["2026-07-31"] },
-  { month: 8, contractualHours: 160, jlDates: ["2026-08-28"] },
-  { month: 9, contractualHours: 168, jlDates: ["2026-09-25"] },
-  { month: 10, contractualHours: 168, jlDates: ["2026-10-30"] },
-  { month: 11, contractualHours: 160, jlDates: ["2026-11-27"] },
-  { month: 12, contractualHours: 160, jlDates: ["2026-12-18", "2026-12-23"] },
+  { month: 1, contractualHours: 160, jlDays: 1 },
+  { month: 2, contractualHours: 160, jlDays: 1 },
+  { month: 3, contractualHours: 168, jlDays: 1 },
+  { month: 4, contractualHours: 160, jlDays: 1 },
+  { month: 5, contractualHours: 146, jlDays: 0 },
+  { month: 6, contractualHours: 160, jlDays: 1 },
+  { month: 7, contractualHours: 176, jlDays: 1 },
+  { month: 8, contractualHours: 160, jlDays: 1 },
+  { month: 9, contractualHours: 168, jlDays: 1 },
+  { month: 10, contractualHours: 168, jlDays: 1 },
+  { month: 11, contractualHours: 160, jlDays: 1 },
+  { month: 12, contractualHours: 160, jlDays: 2 },
 ];
 
 async function seedShiftCodes() {
@@ -86,7 +86,7 @@ async function seedMonthlyConfigs() {
         year: 2026,
         month: mc.month,
         contractualHours: mc.contractualHours,
-        jlDates: mc.jlDates,
+        jlDays: mc.jlDays,
         notes: null,
       });
       console.log(`  + 2026-${String(mc.month).padStart(2, "0")}: ${mc.contractualHours}h`);

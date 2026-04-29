@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, real, text, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, real, text } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -7,7 +7,7 @@ export const monthlyConfigsTable = pgTable("monthly_configs", {
   year: integer("year").notNull(),
   month: integer("month").notNull(),
   contractualHours: real("contractual_hours").notNull(),
-  jlDates: jsonb("jl_dates").notNull().$type<string[]>().default([]),
+  jlDays: integer("jl_days").notNull().default(0),
   notes: text("notes"),
 });
 

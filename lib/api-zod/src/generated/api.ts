@@ -401,9 +401,11 @@ export const ListMonthlyConfigsResponseItem = zod.object({
   contractualHours: zod
     .number()
     .describe("Total hours to plan this month (from PRMS doc)"),
-  jlDates: zod
-    .array(zod.string())
-    .describe("Dates of CCT-FHL JL days off this month"),
+  jlDays: zod
+    .number()
+    .describe(
+      "Number of CCT-FHL JL days available this month (distributed by the planner)",
+    ),
   notes: zod.string().nullish(),
 });
 export const ListMonthlyConfigsResponse = zod.array(
@@ -422,9 +424,11 @@ export const GetMonthlyConfigResponse = zod.object({
   contractualHours: zod
     .number()
     .describe("Total hours to plan this month (from PRMS doc)"),
-  jlDates: zod
-    .array(zod.string())
-    .describe("Dates of CCT-FHL JL days off this month"),
+  jlDays: zod
+    .number()
+    .describe(
+      "Number of CCT-FHL JL days available this month (distributed by the planner)",
+    ),
   notes: zod.string().nullish(),
 });
 
@@ -438,7 +442,9 @@ export const UpsertMonthlyConfigParams = zod.object({
 
 export const UpsertMonthlyConfigBody = zod.object({
   contractualHours: zod.number(),
-  jlDates: zod.array(zod.string()),
+  jlDays: zod
+    .number()
+    .describe("Number of CCT-FHL JL days available this month"),
   notes: zod.string().nullish(),
 });
 
@@ -449,9 +455,11 @@ export const UpsertMonthlyConfigResponse = zod.object({
   contractualHours: zod
     .number()
     .describe("Total hours to plan this month (from PRMS doc)"),
-  jlDates: zod
-    .array(zod.string())
-    .describe("Dates of CCT-FHL JL days off this month"),
+  jlDays: zod
+    .number()
+    .describe(
+      "Number of CCT-FHL JL days available this month (distributed by the planner)",
+    ),
   notes: zod.string().nullish(),
 });
 

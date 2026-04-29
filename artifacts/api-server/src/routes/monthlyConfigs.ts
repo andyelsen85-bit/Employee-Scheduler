@@ -66,7 +66,7 @@ router.put("/monthly-configs/:year/:month", async (req, res): Promise<void> => {
       .update(monthlyConfigsTable)
       .set({
         contractualHours: parsed.data.contractualHours,
-        jlDates: parsed.data.jlDates as string[],
+        jlDays: parsed.data.jlDays,
         notes: parsed.data.notes ?? null,
       })
       .where(eq(monthlyConfigsTable.id, existing[0].id))
@@ -78,7 +78,7 @@ router.put("/monthly-configs/:year/:month", async (req, res): Promise<void> => {
         year: params.data.year,
         month: params.data.month,
         contractualHours: parsed.data.contractualHours,
-        jlDates: parsed.data.jlDates as string[],
+        jlDays: parsed.data.jlDays,
         notes: parsed.data.notes ?? null,
       })
       .returning();

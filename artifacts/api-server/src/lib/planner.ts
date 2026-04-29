@@ -61,12 +61,12 @@ const PRM_MAX = 10;
 const PRM_MIN = -10;
 const HOLIDAY_HOURS = 7.6;
 
-function getWorkingDays(year: number, month: number, publicHolidayDates: string[], jlDates: string[]): string[] {
+function getWorkingDays(year: number, month: number, publicHolidayDates: string[]): string[] {
   const start = startOfMonth(new Date(year, month - 1));
   const end = endOfMonth(new Date(year, month - 1));
   const days = eachDayOfInterval({ start, end });
 
-  const blockedSet = new Set([...publicHolidayDates, ...jlDates]);
+  const blockedSet = new Set(publicHolidayDates);
 
   return days
     .filter((d) => {
@@ -133,6 +133,43 @@ function isCoworkCode(code: string | null, shiftCodes: Record<string, ShiftCodeR
   return shiftCodes[code]?.type === "cowork";
 }
 
+/**
+ * Distribute jlDays JL shifts per employee across working days.
+ * Constraint: no two employees share the same JL date.
+ * Strategy: for each employee (in order), greedily pick days with the lowest
+ * current JL occupancy, spreading assignments across the month.
+ */
+function distributeJlDays(
+  employees: EmployeeRecord[],
+  workingDays: string[],
+  jlDays: number
+): Record<number, Set<string>> {
+  const jlAssignments: Record<number, Set<string>> = {};
+  const jlCountByDate: Record<string, number> = {};
+  for (const d of workingDays) jlCountByDate[d] = 0;
+
+  for (const emp of employees) {
+    jlAssignments[emp.id] = new Set();
+    if (jlDays <= 0 || workingDays.length === 0) continue;
+
+    const count = Math.min(jlDays, workingDays.length);
+
+    const sortedDays = [...workingDays].sort((a, b) => {
+      const diff = (jlCountByDate[a] ?? 0) - (jlCountByDate[b] ?? 0);
+      if (diff !== 0) return diff;
+      return a < b ? -1 : 1;
+    });
+
+    const picked = sortedDays.slice(0, count);
+    for (const d of picked) {
+      jlAssignments[emp.id].add(d);
+      jlCountByDate[d] = (jlCountByDate[d] ?? 0) + 1;
+    }
+  }
+
+  return jlAssignments;
+}
+
 export function generatePlanning(params: {
   year: number;
   month: number;
@@ -141,7 +178,7 @@ export function generatePlanning(params: {
   shiftCodes: Record<string, ShiftCodeRecord>;
   templates: WeekTemplateRecord[];
   publicHolidayDates: string[];
-  jlDates: string[];
+  jlDays: number;
   contractualHours: number;
   requestedDaysOff: RequestedDayOff[];
 }): { entries: PlanningEntryInput[]; violations: PlanningViolation[] } {
@@ -153,12 +190,12 @@ export function generatePlanning(params: {
     shiftCodes,
     templates,
     publicHolidayDates,
-    jlDates,
+    jlDays,
     contractualHours,
     requestedDaysOff,
   } = params;
 
-  const workingDays = getWorkingDays(year, month, publicHolidayDates, jlDates);
+  const workingDays = getWorkingDays(year, month, publicHolidayDates);
   const allDays = eachDayOfInterval({
     start: startOfMonth(new Date(year, month - 1)),
     end: endOfMonth(new Date(year, month - 1)),
@@ -198,6 +235,8 @@ export function generatePlanning(params: {
     };
   });
 
+  const jlAssignments = distributeJlDays(employees, workingDays, jlDays);
+
   const onsiteCountByDate: Record<string, Set<number>> = {};
   for (const d of allDays) onsiteCountByDate[d] = new Set();
 
@@ -210,18 +249,14 @@ export function generatePlanning(params: {
 
   const entries: PlanningEntryInput[] = [];
 
-  const blockSet = new Set([...publicHolidayDates, ...jlDates]);
-
   const templateRotation: Record<number, number> = {};
   for (const e of employees) templateRotation[e.id] = 0;
-
-  const weekOnSiteCoWorkerSets: Record<string, Set<number>> = {};
 
   for (const dateStr of allDays) {
     const dayOfWeek = getDayOfWeek0Mon(dateStr);
     const weekStart = getWeekNumber(dateStr);
     const isWeekend = dayOfWeek === 5 || dayOfWeek === 6;
-    const isBlocked = blockSet.has(dateStr);
+    const isPublicHoliday = publicHolidayDates.includes(dateStr);
 
     for (const emp of employees) {
       const requestedOff = requestedOffMap[emp.id]?.has(dateStr) ?? false;
@@ -237,12 +272,11 @@ export function generatePlanning(params: {
         continue;
       }
 
-      if (isBlocked) {
-        const code = blockSet.has(dateStr) && publicHolidayDates.includes(dateStr) ? "C0" : "JL";
+      if (isPublicHoliday) {
         entries.push({
           employeeId: emp.id,
           date: dateStr,
-          shiftCode: emp.allowedShiftCodes.includes(code) ? code : "C0",
+          shiftCode: "C0",
           isPermanence: false,
           permanenceLevel: null,
           isLocked: true,
@@ -261,6 +295,22 @@ export function generatePlanning(params: {
           permanenceLevel: null,
           isLocked: true,
           requestedOff: true,
+        });
+        plannedHoursByEmployee[emp.id] = (plannedHoursByEmployee[emp.id] ?? 0) + HOLIDAY_HOURS;
+        continue;
+      }
+
+      const isJlDay = jlAssignments[emp.id]?.has(dateStr) ?? false;
+      if (isJlDay && emp.allowedShiftCodes.includes("JL")) {
+        onsiteCountByDate[dateStr].add(emp.id);
+        entries.push({
+          employeeId: emp.id,
+          date: dateStr,
+          shiftCode: "JL",
+          isPermanence: false,
+          permanenceLevel: null,
+          isLocked: false,
+          requestedOff: false,
         });
         plannedHoursByEmployee[emp.id] = (plannedHoursByEmployee[emp.id] ?? 0) + HOLIDAY_HOURS;
         continue;
@@ -314,12 +364,6 @@ export function generatePlanning(params: {
       }
       if (isHomeworkCode(chosenCode, shiftCodes)) {
         homeworkCountThisMonth[emp.id] = (homeworkCountThisMonth[emp.id] ?? 0) + 1;
-        if (emp.country === "be" || emp.country === "de" || emp.country === "fr") {
-          // France: permanence only counts if called (cannot determine here, skip)
-          if (emp.country !== "fr" && isPermanence) {
-            homeworkCountThisMonth[emp.id] = (homeworkCountThisMonth[emp.id] ?? 0);
-          }
-        }
       }
 
       plannedHoursByEmployee[emp.id] = (plannedHoursByEmployee[emp.id] ?? 0) + hoursForCode(chosenCode, shiftCodes);
@@ -345,7 +389,7 @@ export function generatePlanning(params: {
   for (const dateStr of workingDays) {
     const dayEntries = entries.filter((e) => e.date === dateStr);
     const onsiteEmployeeIds = dayEntries
-      .filter((e) => isOnsiteCode(e.shiftCode, shiftCodes))
+      .filter((e) => isOnsiteCode(e.shiftCode, shiftCodes) || e.shiftCode === "JL")
       .map((e) => e.employeeId);
 
     const onsiteSet = new Set(onsiteEmployeeIds);
