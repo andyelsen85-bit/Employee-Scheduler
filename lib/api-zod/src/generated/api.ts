@@ -744,6 +744,7 @@ export const UpdatePlanningEntryParams = zod.object({
 
 export const UpdatePlanningEntryBody = zod.object({
   shiftCode: zod.string().nullish(),
+  deskCode: zod.string().nullish(),
   isPermanence: zod.boolean().optional(),
   permanenceLevel: zod.number().nullish(),
   requestedOff: zod.boolean().optional(),

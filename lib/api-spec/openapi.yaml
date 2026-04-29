@@ -1183,6 +1183,9 @@ components:
         shiftCode:
           type: string
           nullable: true
+        deskCode:
+          type: string
+          nullable: true
         isPermanence:
           type: boolean
         permanenceLevel:

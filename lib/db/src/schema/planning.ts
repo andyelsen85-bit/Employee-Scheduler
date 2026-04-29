@@ -5,6 +5,7 @@ import {
   text,
   boolean,
   timestamp,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -16,6 +17,7 @@ export const planningMonthsTable = pgTable("planning_months", {
   status: text("status").notNull().default("draft"),
   generatedAt: timestamp("generated_at", { withTimezone: true }),
   confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+  violations: jsonb("violations"),
 });
 
 export const planningEntriesTable = pgTable("planning_entries", {

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, ne, sql } from "drizzle-orm";
 import {
   db,
   employeesTable,
@@ -20,7 +20,7 @@ import {
   UpdatePlanningEntryParams,
   UpdatePlanningEntryBody,
 } from "@workspace/api-zod";
-import { generatePlanning } from "../lib/planner.js";
+import { generatePlanning, type PlanningViolation } from "../lib/planner.js";
 
 const router = Router();
 
@@ -45,6 +45,8 @@ async function buildMonthResponse(year: number, month: number) {
     .where(eq(planningEntriesTable.planningMonthId, pm.id))
     .orderBy(planningEntriesTable.date, planningEntriesTable.employeeId);
 
+  const storedViolations = Array.isArray(pm.violations) ? (pm.violations as PlanningViolation[]) : [];
+
   return {
     year,
     month,
@@ -61,7 +63,7 @@ async function buildMonthResponse(year: number, month: number) {
       requestedOff: e.requestedOff,
       notes: e.notes,
     })),
-    violations: [] as { date: string; type: string; message: string; employeeId: number | null }[],
+    violations: storedViolations,
     generatedAt: pm.generatedAt?.toISOString() ?? null,
   };
 }
@@ -123,6 +125,27 @@ router.post("/planning/:year/:month/generate", async (req, res): Promise<void> =
   const publicHolidayDates = holidays.filter((h) => h.country === "lu" || h.country === "all").map((h) => h.date);
   const jlDays = mc.jlDays ?? 0;
 
+  const pm = await getOrCreateMonth(year, month);
+
+  // Load existing locked entries so the algorithm works around them
+  const existingEntries = await db
+    .select()
+    .from(planningEntriesTable)
+    .where(eq(planningEntriesTable.planningMonthId, pm.id));
+
+  const lockedEntries = existingEntries
+    .filter((e) => e.isLocked)
+    .map((e) => ({
+      employeeId: e.employeeId,
+      date: e.date,
+      shiftCode: e.shiftCode,
+      deskCode: e.deskCode ?? null,
+      isPermanence: e.isPermanence,
+      permanenceLevel: e.permanenceLevel,
+      isLocked: true,
+      requestedOff: e.requestedOff,
+    }));
+
   const { entries, violations } = generatePlanning({
     year,
     month,
@@ -157,17 +180,22 @@ router.post("/planning/:year/:month/generate", async (req, res): Promise<void> =
       employeeId: r.employeeId,
       dates: r.dates,
     })),
+    lockedEntries,
   });
 
-  const pm = await getOrCreateMonth(year, month);
-
-  if (parsed.data.overwriteExisting !== false) {
-    await db.delete(planningEntriesTable).where(eq(planningEntriesTable.planningMonthId, pm.id));
+  // Delete all non-locked entries, then insert newly generated ones
+  if (existingEntries.filter((e) => !e.isLocked).length > 0) {
+    await db
+      .delete(planningEntriesTable)
+      .where(and(eq(planningEntriesTable.planningMonthId, pm.id), ne(planningEntriesTable.isLocked, true)));
   }
 
-  if (entries.length > 0) {
+  // Filter out locked entries from the generated set (they already exist in DB)
+  const newEntries = entries.filter((e) => !e.isLocked);
+
+  if (newEntries.length > 0) {
     await db.insert(planningEntriesTable).values(
-      entries.map((e) => ({
+      newEntries.map((e) => ({
         planningMonthId: pm.id,
         employeeId: e.employeeId,
         date: e.date,
@@ -182,9 +210,10 @@ router.post("/planning/:year/:month/generate", async (req, res): Promise<void> =
     );
   }
 
+  // Persist violations so the GET endpoint and dashboard can show them
   await db
     .update(planningMonthsTable)
-    .set({ status: "draft", generatedAt: new Date() })
+    .set({ status: "draft", generatedAt: new Date(), violations: violations as unknown as Record<string, unknown>[] })
     .where(eq(planningMonthsTable.id, pm.id));
 
   const result = await buildMonthResponse(year, month);
@@ -260,6 +289,7 @@ router.put("/planning/entries/:id", async (req, res): Promise<void> => {
   }
   const updateData: Partial<typeof planningEntriesTable.$inferInsert> = {};
   if (parsed.data.shiftCode !== undefined) updateData.shiftCode = parsed.data.shiftCode ?? null;
+  if (parsed.data.deskCode !== undefined) updateData.deskCode = parsed.data.deskCode ?? null;
   if (parsed.data.isPermanence !== undefined) updateData.isPermanence = parsed.data.isPermanence;
   if (parsed.data.permanenceLevel !== undefined) updateData.permanenceLevel = parsed.data.permanenceLevel ?? null;
   if (parsed.data.requestedOff !== undefined) updateData.requestedOff = parsed.data.requestedOff;
@@ -280,6 +310,7 @@ router.put("/planning/entries/:id", async (req, res): Promise<void> => {
     employeeId: row.employeeId,
     date: row.date,
     shiftCode: row.shiftCode,
+    deskCode: row.deskCode ?? null,
     isPermanence: row.isPermanence,
     permanenceLevel: row.permanenceLevel,
     isLocked: row.isLocked,
@@ -307,7 +338,7 @@ router.delete("/planning/:year/:month", async (req, res): Promise<void> => {
   await db.delete(planningEntriesTable).where(eq(planningEntriesTable.planningMonthId, pm.id));
   const [updated] = await db
     .update(planningMonthsTable)
-    .set({ status: "draft", generatedAt: null, confirmedAt: null })
+    .set({ status: "draft", generatedAt: null, confirmedAt: null, violations: null })
     .where(eq(planningMonthsTable.id, pm.id))
     .returning();
   res.json({ cleared: true, status: updated?.status ?? "draft" });

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNotNull } from "drizzle-orm";
 import {
   db,
   employeesTable,
@@ -7,10 +7,32 @@ import {
   planningMonthsTable,
   planningEntriesTable,
   shiftCodesTable,
+  permanenceOverridesTable,
 } from "@workspace/db";
 import { GetDashboardSummaryQueryParams } from "@workspace/api-zod";
 
 const router = Router();
+
+function getISOWeeksInYear(year: number): number {
+  const dec28 = new Date(year, 11, 28);
+  const jan1 = new Date(year, 0, 1);
+  const dayOfWeek = (jan1.getDay() + 6) % 7;
+  const dec28Iso = Math.ceil((((dec28.getTime() - jan1.getTime()) / 86400000) + dayOfWeek + 1) / 7);
+  return dec28Iso;
+}
+
+function getISOWeekStart(year: number, week: number): string {
+  const jan4 = new Date(year, 0, 4);
+  const dayOfWeek = (jan4.getDay() + 6) % 7;
+  const weekStart = new Date(jan4.getTime() - dayOfWeek * 86400000 + (week - 1) * 7 * 86400000);
+  return weekStart.toISOString().split("T")[0];
+}
+
+function getWeekEnd(weekStart: string): string {
+  const d = new Date(weekStart);
+  d.setDate(d.getDate() + 6);
+  return d.toISOString().split("T")[0];
+}
 
 router.get("/dashboard/summary", async (req, res): Promise<void> => {
   const qp = GetDashboardSummaryQueryParams.safeParse(req.query);
@@ -70,45 +92,53 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
     return { date, onsiteCount, totalDesks };
   });
 
-  const weekStartSet = [...new Set(entries.map((e) => {
-    const d = new Date(e.date);
-    const dow = d.getDay() === 0 ? 6 : d.getDay() - 1;
-    const ms = new Date(d);
-    ms.setDate(ms.getDate() - dow);
-    return ms.toISOString().split("T")[0];
-  }))].sort();
+  // Permanence schedule — same rotation logic as permanence page, filtered to this month's weeks
+  const permanenceEmployees = await db
+    .select({ id: employeesTable.id, name: employeesTable.name, permanenceGroup: employeesTable.permanenceGroup })
+    .from(employeesTable)
+    .where(isNotNull(employeesTable.permanenceGroup));
 
-  const permanenceSchedule = weekStartSet.map((ws) => {
-    const weekEnd = new Date(ws);
-    weekEnd.setDate(weekEnd.getDate() + 6);
-    const permaEntries = entries.filter(
-      (e) => e.isPermanence && e.date >= ws && e.date <= weekEnd.toISOString().split("T")[0]
-    );
-    const g1l1 = permaEntries.find((e) => {
-      const emp = employees.find((em) => em.id === e.employeeId);
-      return emp?.permanenceGroup === 1 && e.permanenceLevel === 1;
-    });
-    const g1l2 = permaEntries.find((e) => {
-      const emp = employees.find((em) => em.id === e.employeeId);
-      return emp?.permanenceGroup === 1 && e.permanenceLevel === 2;
-    });
-    const g2l1 = permaEntries.find((e) => {
-      const emp = employees.find((em) => em.id === e.employeeId);
-      return emp?.permanenceGroup === 2 && e.permanenceLevel === 1;
-    });
-    const g2l2 = permaEntries.find((e) => {
-      const emp = employees.find((em) => em.id === e.employeeId);
-      return emp?.permanenceGroup === 2 && e.permanenceLevel === 2;
-    });
-    return {
+  const overrides = await db
+    .select()
+    .from(permanenceOverridesTable)
+    .where(eq(permanenceOverridesTable.year, year));
+
+  const group1 = permanenceEmployees.filter((e) => e.permanenceGroup === 1);
+  const group2 = permanenceEmployees.filter((e) => e.permanenceGroup === 2);
+
+  function rotateAssign(group: typeof group1, weekIdx: number): number | null {
+    if (group.length === 0) return null;
+    return group[weekIdx % group.length].id;
+  }
+
+  // Build week list for the whole year, then filter to weeks overlapping this month
+  const totalWeeks = getISOWeeksInYear(year);
+  const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
+  const monthEndDate = new Date(year, month, 0);
+  const monthEnd = monthEndDate.toISOString().split("T")[0];
+
+  const permanenceSchedule = [];
+  for (let w = 1; w <= totalWeeks; w++) {
+    const ws = getISOWeekStart(year, w);
+    const we = getWeekEnd(ws);
+    // Include week if it overlaps with the current month
+    if (we < monthStart || ws > monthEnd) continue;
+    const g1Override = overrides.find((o) => o.weekNumber === w && o.group === 1);
+    const g2Override = overrides.find((o) => o.weekNumber === w && o.group === 2);
+    permanenceSchedule.push({
       weekStart: ws,
-      weekEnd: weekEnd.toISOString().split("T")[0],
-      group1Level1EmployeeId: g1l1?.employeeId ?? null,
-      group1Level2EmployeeId: g1l2?.employeeId ?? null,
-      group2Level1EmployeeId: g2l1?.employeeId ?? null,
-      group2Level2EmployeeId: g2l2?.employeeId ?? null,
-    };
-  });
+      weekEnd: we,
+      weekNumber: w,
+      g1EmployeeId: g1Override ? g1Override.employeeId : rotateAssign(group1, w - 1),
+      g2EmployeeId: g2Override ? g2Override.employeeId : rotateAssign(group2, w - 1),
+      g1Manual: !!g1Override,
+      g2Manual: !!g2Override,
+    });
+  }
+
+  // Real violations — read from persisted data stored during last generation
+  const storedViolations = Array.isArray(pm?.violations) ? (pm.violations as Array<{ type: string; message: string }>) : [];
+  const totalViolations = storedViolations.length;
 
   res.json({
     year,
@@ -117,7 +147,9 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
     employeeStats,
     dailyOnsiteRate,
     permanenceSchedule,
-    totalViolations: 0,
+    totalViolations,
+    violations: storedViolations,
+    totalDesks,
   });
 });
 

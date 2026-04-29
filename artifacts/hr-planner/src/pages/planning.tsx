@@ -2,7 +2,7 @@ import { Layout } from "@/components/layout";
 import { useParams, Link } from "wouter";
 import { useGetMonthPlanning, getGetMonthPlanningQueryKey, useListEmployees, getListEmployeesQueryKey, useListShiftCodes, getListShiftCodesQueryKey, useGeneratePlanning, useConfirmPlanning, useUpdatePlanningEntry, useGetMonthlyConfig, getGetMonthlyConfigQueryKey, useListOffices, getListOfficesQueryKey } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Download, CheckCircle, Wand2, AlertCircle, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, CheckCircle, Wand2, AlertCircle, Trash2, Lock } from "lucide-react";
 import { useState } from "react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -38,7 +38,7 @@ export default function Planning() {
     query: { queryKey: getListOfficesQueryKey() }
   });
 
-  // Shift-type → inline color style, matching the Shift Codes page palette
+  // Shift-type → inline color style
   const SHIFT_TYPE_STYLE: Record<string, { bg: string; text: string; border: string }> = {
     onsite:   { bg: "rgba(59,130,246,0.12)",  text: "#1d4ed8", border: "rgba(59,130,246,0.25)" },
     homework: { bg: "rgba(34,197,94,0.12)",   text: "#15803d", border: "rgba(34,197,94,0.25)" },
@@ -47,7 +47,6 @@ export default function Planning() {
     jl:       { bg: "rgba(168,85,247,0.12)",  text: "#7e22ce", border: "rgba(168,85,247,0.25)" },
   };
 
-  // Map shift code → type for fast lookup
   const shiftTypeMap = new Map<string, string>(
     (shiftCodes ?? []).map(sc => [sc.code, sc.type])
   );
@@ -64,11 +63,37 @@ export default function Planning() {
     { bg: "#ccfbf1", text: "#0f766e", border: "#99f6e4" },
   ];
   const deskColorMap = new Map<string, { bg: string; text: string; border: string }>();
+  const allDeskCodes: { code: string; officeName: string }[] = [];
   if (offices) {
     offices.forEach((office, idx) => {
       const color = OFFICE_PALETTE[idx % OFFICE_PALETTE.length];
-      (office.deskCodes ?? []).forEach((code) => deskColorMap.set(code, color));
+      (office.deskCodes ?? []).forEach((code) => {
+        deskColorMap.set(code, color);
+        allDeskCodes.push({ code, officeName: office.name });
+      });
     });
+  }
+
+  // Desk clash detection: date → deskCode → [employeeIds]
+  const deskClashes = new Map<string, Set<number>>();
+  if (planning) {
+    const deskByDate = new Map<string, Map<string, number[]>>();
+    for (const e of planning.entries) {
+      if (!e.deskCode) continue;
+      const key = e.date;
+      if (!deskByDate.has(key)) deskByDate.set(key, new Map());
+      const dm = deskByDate.get(key)!;
+      if (!dm.has(e.deskCode)) dm.set(e.deskCode, []);
+      dm.get(e.deskCode)!.push(e.employeeId);
+    }
+    for (const [date, dm] of deskByDate.entries()) {
+      for (const [, empIds] of dm.entries()) {
+        if (empIds.length > 1) {
+          if (!deskClashes.has(date)) deskClashes.set(date, new Set());
+          empIds.forEach(id => deskClashes.get(date)!.add(id));
+        }
+      }
+    }
   }
 
   const generatePlanning = useGeneratePlanning();
@@ -77,10 +102,31 @@ export default function Planning() {
   const [isClearing, setIsClearing] = useState(false);
 
   const handleGenerate = () => {
-    generatePlanning.mutate({ year, month, data: { requestedDaysOff: [], overwriteExisting: true } }, {
+    generatePlanning.mutate({ year, month, data: { requestedDaysOff: [] } }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getGetMonthPlanningQueryKey(year, month) });
-        toast({ title: "Planning generated successfully" });
+        toast({ title: "Planning generated (locked entries preserved)" });
+      }
+    });
+  };
+
+  const handleForceRegenerate = async () => {
+    if (!confirm("This will clear ALL entries (including locked/manual overrides) and regenerate from scratch. Continue?")) return;
+    setIsClearing(true);
+    try {
+      const res = await fetch(`/api/planning/${year}/${month}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to clear");
+      queryClient.invalidateQueries({ queryKey: getGetMonthPlanningQueryKey(year, month) });
+    } catch {
+      toast({ title: "Failed to clear planning", variant: "destructive" });
+      setIsClearing(false);
+      return;
+    }
+    setIsClearing(false);
+    generatePlanning.mutate({ year, month, data: { requestedDaysOff: [] } }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getGetMonthPlanningQueryKey(year, month) });
+        toast({ title: "Planning fully regenerated" });
       }
     });
   };
@@ -110,7 +156,15 @@ export default function Planning() {
   };
 
   const handleUpdateShift = (entryId: number, shiftCode: string) => {
-    updateEntry.mutate({ id: entryId, data: { shiftCode } }, {
+    updateEntry.mutate({ id: entryId, data: { shiftCode: shiftCode || null } }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getGetMonthPlanningQueryKey(year, month) });
+      }
+    });
+  };
+
+  const handleUpdateDesk = (entryId: number, deskCode: string | null) => {
+    updateEntry.mutate({ id: entryId, data: { deskCode: deskCode || null } }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getGetMonthPlanningQueryKey(year, month) });
       }
@@ -145,6 +199,8 @@ export default function Planning() {
     ? employees.reduce((sum, emp) => sum + getEmployeePlannedHours(emp.id), 0)
     : 0;
 
+  const lockedCount = planning ? planning.entries.filter(e => e.isLocked).length : 0;
+
   return (
     <Layout>
       <div className="flex flex-col gap-6 h-full">
@@ -171,6 +227,12 @@ export default function Planning() {
                 {planning.status}
               </Badge>
             )}
+            {lockedCount > 0 && (
+              <Badge variant="outline" className="gap-1 text-amber-700 border-amber-300 bg-amber-50">
+                <Lock className="h-3 w-3" />
+                {lockedCount} locked
+              </Badge>
+            )}
           </div>
           
           <div className="flex gap-2">
@@ -178,9 +240,13 @@ export default function Planning() {
               <Download className="h-4 w-4 mr-2" />
               Collect Requests
             </Button>
-            <Button variant="outline" size="sm" onClick={handleGenerate} disabled={generatePlanning.isPending}>
+            <Button variant="outline" size="sm" onClick={handleGenerate} disabled={generatePlanning.isPending || isClearing}>
               <Wand2 className="h-4 w-4 mr-2" />
               Generate
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleForceRegenerate} disabled={generatePlanning.isPending || isClearing} className="text-amber-700 border-amber-400 hover:bg-amber-50">
+              <Wand2 className="h-4 w-4 mr-2" />
+              Force Regenerate
             </Button>
             <Button size="sm" onClick={handleConfirm} disabled={confirmPlanning.isPending || planning?.status === "confirmed"}>
               <CheckCircle className="h-4 w-4 mr-2" />
@@ -243,11 +309,11 @@ export default function Planning() {
               Violations Detected ({planning.violations.length})
             </div>
             <ul className="list-disc list-inside text-sm pl-5 space-y-1">
-              {planning.violations.slice(0, 3).map((v, i) => (
-                <li key={i}>{format(new Date(v.date), "MMM d")}: {v.message}</li>
+              {planning.violations.slice(0, 5).map((v, i) => (
+                <li key={i}>{v.date.length === 10 ? format(new Date(v.date), "MMM d") : v.date}: {v.message}</li>
               ))}
-              {planning.violations.length > 3 && (
-                <li>...and {planning.violations.length - 3} more</li>
+              {planning.violations.length > 5 && (
+                <li>...and {planning.violations.length - 5} more</li>
               )}
             </ul>
           </div>
@@ -303,68 +369,108 @@ export default function Planning() {
                           const dateStr = format(day, "yyyy-MM-dd");
                           const entry = planning.entries.find(e => e.employeeId === emp.id && e.date.startsWith(dateStr));
                           const weekend = isWeekend(day);
-                          const hasViolation = planning.violations.some(v => v.date.startsWith(dateStr) && v.employeeId === emp.id);
+                          const hasViolation = planning.violations.some(v => v.date.startsWith(dateStr) && (v.employeeId === emp.id || v.employeeId === null));
+                          const hasDeskClash = !!(entry?.deskCode && deskClashes.get(dateStr)?.has(emp.id));
 
                           return (
                             <td key={day.toISOString()} className={`p-1 border-r text-center relative ${weekend ? 'bg-muted/20' : ''} ${hasViolation ? 'bg-destructive/5' : ''}`}>
                               {entry && entry.shiftCode && !weekend ? (
                                 <div className="flex flex-col gap-0.5">
-                                <Popover>
-                                  <PopoverTrigger asChild>
-                                    {(() => {
-                                      const codeType = shiftTypeMap.get(entry.shiftCode!);
-                                      const style = !hasViolation && codeType ? SHIFT_TYPE_STYLE[codeType] : null;
-                                      return (
-                                        <button
-                                          className={`px-2 py-1 text-xs font-semibold rounded w-full border transition-colors hover:opacity-80 ${hasViolation ? 'bg-destructive/10 text-destructive border-destructive/30 ring-1 ring-destructive' : ''}`}
-                                          style={style ? { backgroundColor: style.bg, color: style.text, borderColor: style.border } : undefined}
-                                        >
-                                          {entry.shiftCode}
-                                        </button>
-                                      );
-                                    })()}
-                                  </PopoverTrigger>
-                                  <PopoverContent className="w-48 p-2" side="bottom">
-                                    <div className="grid grid-cols-2 gap-1">
-                                      {shiftCodes?.map(sc => {
-                                        const s = SHIFT_TYPE_STYLE[sc.type];
-                                        const isActive = sc.code === entry.shiftCode;
+                                  {/* Shift code button with override popover */}
+                                  <Popover>
+                                    <PopoverTrigger asChild>
+                                      {(() => {
+                                        const codeType = shiftTypeMap.get(entry.shiftCode!);
+                                        const style = !hasViolation && codeType ? SHIFT_TYPE_STYLE[codeType] : null;
                                         return (
                                           <button
-                                            key={sc.code}
-                                            onClick={() => handleUpdateShift(entry.id, sc.code)}
-                                            className={`text-xs font-semibold px-2 py-1.5 rounded border transition-colors hover:opacity-80 ${isActive ? 'ring-2 ring-offset-1' : ''}`}
-                                            style={s ? { backgroundColor: s.bg, color: s.text, borderColor: s.border } : undefined}
+                                            className={`px-2 py-1 text-xs font-semibold rounded w-full border transition-colors hover:opacity-80 ${hasViolation ? 'bg-destructive/10 text-destructive border-destructive/30 ring-1 ring-destructive' : ''} ${entry.isLocked ? 'ring-1 ring-amber-400' : ''}`}
+                                            style={style ? { backgroundColor: style.bg, color: style.text, borderColor: style.border } : undefined}
                                           >
-                                            {sc.code}
+                                            <span className="flex items-center justify-center gap-0.5">
+                                              {entry.isLocked && <Lock className="h-2.5 w-2.5 opacity-60 flex-shrink-0" />}
+                                              {entry.shiftCode}
+                                            </span>
                                           </button>
                                         );
-                                      })}
-                                      <Button 
-                                        size="sm" 
-                                        variant="outline" 
-                                        className="text-destructive text-xs col-span-2"
-                                        onClick={() => handleUpdateShift(entry.id, "")}
+                                      })()}
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-52 p-2" side="bottom">
+                                      <div className="text-xs font-semibold text-muted-foreground mb-2">Shift Code</div>
+                                      <div className="grid grid-cols-2 gap-1">
+                                        {shiftCodes?.map(sc => {
+                                          const s = SHIFT_TYPE_STYLE[sc.type];
+                                          const isActive = sc.code === entry.shiftCode;
+                                          return (
+                                            <button
+                                              key={sc.code}
+                                              onClick={() => handleUpdateShift(entry.id, sc.code)}
+                                              className={`text-xs font-semibold px-2 py-1.5 rounded border transition-colors hover:opacity-80 ${isActive ? 'ring-2 ring-offset-1' : ''}`}
+                                              style={s ? { backgroundColor: s.bg, color: s.text, borderColor: s.border } : undefined}
+                                            >
+                                              {sc.code}
+                                            </button>
+                                          );
+                                        })}
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="text-destructive text-xs col-span-2"
+                                          onClick={() => handleUpdateShift(entry.id, "")}
+                                        >
+                                          Clear shift
+                                        </Button>
+                                      </div>
+                                    </PopoverContent>
+                                  </Popover>
+
+                                  {/* Desk code with override popover */}
+                                  <Popover>
+                                    <PopoverTrigger asChild>
+                                      <button
+                                        className={`text-[9px] font-bold font-mono rounded px-1 py-0.5 leading-tight text-center border transition-colors hover:opacity-80 w-full ${hasDeskClash ? 'ring-1 ring-red-500 bg-red-50 text-red-700 border-red-300' : ''}`}
+                                        style={!hasDeskClash && entry.deskCode && deskColorMap.get(entry.deskCode)
+                                          ? { backgroundColor: deskColorMap.get(entry.deskCode)!.bg, color: deskColorMap.get(entry.deskCode)!.text, borderColor: deskColorMap.get(entry.deskCode)!.bg }
+                                          : !hasDeskClash ? { backgroundColor: '#f1f5f9', color: '#94a3b8', borderColor: '#e2e8f0' }
+                                          : undefined
+                                        }
                                       >
-                                        Clear
-                                      </Button>
-                                    </div>
-                                  </PopoverContent>
-                                </Popover>
-                                {entry.deskCode && (() => {
-                                  const deskColor = deskColorMap.get(entry.deskCode);
-                                  return (
-                                    <div
-                                      className="text-[9px] font-bold font-mono rounded px-1 py-0.5 leading-tight text-center border"
-                                      style={deskColor
-                                        ? { backgroundColor: deskColor.bg, color: deskColor.text, borderColor: deskColor.bg }
-                                        : { backgroundColor: '#f1f5f9', color: '#64748b', borderColor: '#e2e8f0' }
-                                      }
-                                    >
-                                      {entry.deskCode}
-                                    </div>
-                                  );
-                                })()}
+                                        {entry.deskCode || "—"}
+                                      </button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-52 p-2" side="bottom">
+                                      <div className="text-xs font-semibold text-muted-foreground mb-2">Desk Override</div>
+                                      {hasDeskClash && (
+                                        <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-2 py-1 mb-2">
+                                          ⚠ Desk clash — same desk assigned to multiple people
+                                        </div>
+                                      )}
+                                      <div className="grid grid-cols-2 gap-1 max-h-48 overflow-y-auto">
+                                        {allDeskCodes.map(({ code }) => {
+                                          const color = deskColorMap.get(code);
+                                          const isActive = code === entry.deskCode;
+                                          return (
+                                            <button
+                                              key={code}
+                                              onClick={() => handleUpdateDesk(entry.id, code)}
+                                              className={`text-xs font-bold font-mono px-2 py-1.5 rounded border transition-colors hover:opacity-80 ${isActive ? 'ring-2 ring-offset-1' : ''}`}
+                                              style={color ? { backgroundColor: color.bg, color: color.text, borderColor: color.border } : undefined}
+                                            >
+                                              {code}
+                                            </button>
+                                          );
+                                        })}
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="text-destructive text-xs col-span-2"
+                                          onClick={() => handleUpdateDesk(entry.id, null)}
+                                        >
+                                          Clear desk
+                                        </Button>
+                                      </div>
+                                    </PopoverContent>
+                                  </Popover>
                                 </div>
                               ) : null}
                             </td>

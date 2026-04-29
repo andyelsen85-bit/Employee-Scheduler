@@ -252,6 +252,7 @@ export interface GeneratePlanningBody {
 
 export interface UpdatePlanningEntryBody {
   shiftCode?: string | null;
+  deskCode?: string | null;
   isPermanence?: boolean;
   permanenceLevel?: number | null;
   requestedOff?: boolean;

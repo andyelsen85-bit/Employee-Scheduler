@@ -283,6 +283,7 @@ export function generatePlanning(params: {
   jlDays: number;
   contractualHours: number;
   requestedDaysOff: RequestedDayOff[];
+  lockedEntries?: PlanningEntryInput[];
 }): { entries: PlanningEntryInput[]; violations: PlanningViolation[] } {
   const {
     year,
@@ -294,7 +295,12 @@ export function generatePlanning(params: {
     jlDays,
     contractualHours,
     requestedDaysOff,
+    lockedEntries = [],
   } = params;
+
+  // Build a set of locked slots: "employeeId-date" — these are skipped during generation
+  // and included in the output as-is so the caller can deduplicate with DB state.
+  const lockedSlots = new Set(lockedEntries.map((e) => `${e.employeeId}-${e.date}`));
 
   const workingDays = getWorkingDays(year, month, publicHolidayDates);
   const allDays = eachDayOfInterval({
@@ -497,6 +503,23 @@ export function generatePlanning(params: {
 
     for (const emp of employees) {
       if (isWeekend || isPublicHoliday) continue;
+
+      // Skip slots that have been manually locked — they already exist in the DB and are
+      // preserved by the route (we only delete non-locked entries before inserting new ones).
+      if (lockedSlots.has(`${emp.id}-${dateStr}`)) {
+        // Still count the locked entry's hours so violation checks are accurate
+        const locked = lockedEntries.find((e) => e.employeeId === emp.id && e.date === dateStr);
+        if (locked?.shiftCode) {
+          const h = hoursForCode(locked.shiftCode, shiftCodes);
+          plannedHoursByEmployee[emp.id] = (plannedHoursByEmployee[emp.id] ?? 0) + h;
+          remainingHours[emp.id] = (remainingHours[emp.id] ?? 0) - h;
+          if (isOnsiteCode(locked.shiftCode, shiftCodes)) {
+            onsiteCountByEmployee[emp.id] = (onsiteCountByEmployee[emp.id] ?? 0) + 1;
+          }
+        }
+        remainingShiftDays[emp.id] = Math.max(0, (remainingShiftDays[emp.id] ?? 1) - 1);
+        continue;
+      }
 
       const permaInfo = permanenceAssignments[weekStart];
       const isPermanence = permaInfo?.g1 === emp.id || permaInfo?.g2 === emp.id;
