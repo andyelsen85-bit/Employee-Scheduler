@@ -25,6 +25,7 @@ export type EmployeeRecord = {
 export type OfficeRecord = {
   id: number;
   deskCount: number;
+  deskCodes: string[];
   employeeIds: number[];
 };
 
@@ -43,6 +44,7 @@ export type PlanningEntryInput = {
   employeeId: number;
   date: string;
   shiftCode: string | null;
+  deskCode: string | null;
   isPermanence: boolean;
   permanenceLevel: number | null;
   isLocked: boolean;
@@ -59,15 +61,13 @@ export type PlanningViolation = {
 const HOMEWORK_DAY_LIMIT = 35;
 const PRM_MAX = 10;
 const PRM_MIN = -10;
+const MIN_ONSITE_RATIO = 0.5; // at least 50% of shift days must be onsite
 
 function getWorkingDays(year: number, month: number, publicHolidayDates: string[]): string[] {
   const start = startOfMonth(new Date(year, month - 1));
   const end = endOfMonth(new Date(year, month - 1));
-  const days = eachDayOfInterval({ start, end });
-
   const blockedSet = new Set(publicHolidayDates);
-
-  return days
+  return eachDayOfInterval({ start, end })
     .filter((d) => {
       const dow = getDay(d);
       const iso = format(d, "yyyy-MM-dd");
@@ -86,6 +86,15 @@ function getWeekNumber(dateStr: string): string {
   const d = parseISO(dateStr);
   const monday = addDays(d, -(getDayOfWeek0Mon(dateStr)));
   return format(monday, "yyyy-MM-dd");
+}
+
+/** Shuffle an array in-place using Fisher-Yates. */
+function shuffle<T>(arr: T[]): T[] {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
 }
 
 /**
@@ -108,7 +117,7 @@ function bestCodeByTarget(
     const da = Math.abs(a.hours - targetHours);
     const db = Math.abs(b.hours - targetHours);
     if (Math.abs(da - db) > 0.001) return da - db;
-    return b.hours - a.hours;
+    return b.hours - a.hours; // prefer higher hours on tie
   });
 
   return candidates[0].code;
@@ -131,7 +140,7 @@ function isHomeworkCode(code: string | null, shiftCodes: Record<string, ShiftCod
 
 /**
  * Distribute jlDays JL shifts per employee across working days.
- * Constraint: no two employees share the same JL date.
+ * Constraint: spread them evenly so no two employees share the same JL date if possible.
  */
 function distributeJlDays(
   employees: EmployeeRecord[],
@@ -147,7 +156,6 @@ function distributeJlDays(
     if (jlDays <= 0 || workingDays.length === 0) continue;
 
     const count = Math.min(jlDays, workingDays.length);
-
     const sortedDays = [...workingDays].sort((a, b) => {
       const diff = (jlCountByDate[a] ?? 0) - (jlCountByDate[b] ?? 0);
       if (diff !== 0) return diff;
@@ -162,6 +170,47 @@ function distributeJlDays(
   }
 
   return jlAssignments;
+}
+
+/**
+ * Pre-determine a shuffled sequence of day-types for an employee's shift days.
+ * Ensures at least MIN_ONSITE_RATIO of days are onsite.
+ * The remainder is split between homework/cowork based on eligibility.
+ */
+function predetermineTypes(
+  shiftDayCount: number,
+  canHomework: boolean,
+  canCowork: boolean
+): Array<"onsite" | "homework" | "cowork"> {
+  if (shiftDayCount === 0) return [];
+
+  const minOnsite = Math.ceil(shiftDayCount * MIN_ONSITE_RATIO);
+  const remaining = shiftDayCount - minOnsite;
+
+  let homeworkDays = 0;
+  let coworkDays = 0;
+
+  if (canHomework && canCowork) {
+    // Alternate: half homework, half cowork for variety
+    homeworkDays = Math.ceil(remaining / 2);
+    coworkDays = remaining - homeworkDays;
+  } else if (canHomework) {
+    homeworkDays = remaining;
+  } else if (canCowork) {
+    coworkDays = remaining;
+  } else {
+    // No remote options — all onsite
+    return Array(shiftDayCount).fill("onsite");
+  }
+
+  const types: Array<"onsite" | "homework" | "cowork"> = [
+    ...Array<"onsite">(minOnsite).fill("onsite"),
+    ...Array<"homework">(homeworkDays).fill("homework"),
+    ...Array<"cowork">(coworkDays).fill("cowork"),
+  ];
+
+  // Shuffle so patterns vary week by week across the month
+  return shuffle(types);
 }
 
 export function generatePlanning(params: {
@@ -182,7 +231,6 @@ export function generatePlanning(params: {
     employees,
     offices,
     shiftCodes,
-    templates,
     publicHolidayDates,
     jlDays,
     contractualHours,
@@ -200,19 +248,13 @@ export function generatePlanning(params: {
     requestedOffMap[r.employeeId] = new Set(r.dates);
   }
 
-  const templatesByEmployee: Record<number, WeekTemplateRecord[]> = {};
-  for (const t of templates) {
-    if (!templatesByEmployee[t.employeeId]) templatesByEmployee[t.employeeId] = [];
-    templatesByEmployee[t.employeeId].push(t);
-  }
-
+  // Permanence rotation
   const permanenceGroup1L1 = employees.filter((e) => e.permanenceGroup === 1 && e.permanenceLevel === 1);
   const permanenceGroup1L2 = employees.filter((e) => e.permanenceGroup === 1 && e.permanenceLevel === 2);
   const permanenceGroup2L1 = employees.filter((e) => e.permanenceGroup === 2 && e.permanenceLevel === 1);
   const permanenceGroup2L2 = employees.filter((e) => e.permanenceGroup === 2 && e.permanenceLevel === 2);
 
   const weekStarts = [...new Set(workingDays.map(getWeekNumber))];
-
   const permanenceAssignments: Record<
     string,
     { g1l1: number | null; g1l2: number | null; g2l1: number | null; g2l2: number | null }
@@ -232,32 +274,68 @@ export function generatePlanning(params: {
     };
   });
 
+  // JL day assignment
   const jlAssignments = distributeJlDays(employees, workingDays, jlDays);
 
-  // Per-employee running balance for hour-accurate planning
-  // remainingHours: hours still to assign; remainingShiftDays: days that still have a shift (not JL)
+  // ── PHASE 1: Pre-determine day types per employee ──────────────────────────
+  // For each employee, produce a shuffled sequence of "onsite" | "homework" | "cowork"
+  // for their shift days (working days - JL days - requested-off days).
+  // This ensures at least 50% onsite and introduces week-by-week variety.
+
+  const empDayTypeSequence: Record<number, Array<"onsite" | "homework" | "cowork">> = {};
+  const empShiftDays: Record<number, string[]> = {};
+
+  for (const emp of employees) {
+    const jlDates = jlAssignments[emp.id] ?? new Set();
+    const reqOffDates = requestedOffMap[emp.id] ?? new Set();
+
+    // Shift days = working days that are not JL and not requested-off
+    const shiftDays = workingDays.filter((d) => !jlDates.has(d) && !reqOffDates.has(d));
+    empShiftDays[emp.id] = shiftDays;
+
+    const canHomework =
+      emp.homeworkEligible &&
+      emp.allowedShiftCodes.some((c) => shiftCodes[c]?.type === "homework") &&
+      (emp.homeworkDaysUsedThisYear ?? 0) < HOMEWORK_DAY_LIMIT;
+
+    const canCowork =
+      emp.coworkEligible && emp.allowedShiftCodes.some((c) => shiftCodes[c]?.type === "cowork");
+
+    empDayTypeSequence[emp.id] = predetermineTypes(shiftDays.length, canHomework, canCowork);
+  }
+
+  // ── PHASE 2: Day-by-day assignment ────────────────────────────────────────
+  // Track desk pool per date per office: which desks have been assigned
+  const deskUsedByDateByOffice: Record<string, Record<number, Set<string>>> = {};
+  for (const d of allDays) {
+    deskUsedByDateByOffice[d] = {};
+    for (const o of offices) deskUsedByDateByOffice[d][o.id] = new Set();
+  }
+
+  // Running balance for hour accuracy
   const remainingHours: Record<number, number> = {};
   const remainingShiftDays: Record<number, number> = {};
   for (const emp of employees) {
     const jlCount = jlAssignments[emp.id]?.size ?? 0;
+    const reqOffCount = (requestedOffMap[emp.id] ?? new Set()).size;
     remainingHours[emp.id] = contractualHours;
-    remainingShiftDays[emp.id] = workingDays.length - jlCount;
+    remainingShiftDays[emp.id] = workingDays.length - jlCount - reqOffCount;
   }
-
-  const onsiteCountByDate: Record<string, Set<number>> = {};
-  for (const d of allDays) onsiteCountByDate[d] = new Set();
 
   const homeworkCountThisMonth: Record<number, number> = {};
   const plannedHoursByEmployee: Record<number, number> = {};
+  const onsiteCountByEmployee: Record<number, number> = {};
   for (const e of employees) {
     homeworkCountThisMonth[e.id] = 0;
     plannedHoursByEmployee[e.id] = 0;
+    onsiteCountByEmployee[e.id] = 0;
   }
 
   const entries: PlanningEntryInput[] = [];
 
-  const templateRotation: Record<number, number> = {};
-  for (const e of employees) templateRotation[e.id] = 0;
+  // Index per employee: which position in their type sequence we're at
+  const empTypeIdx: Record<number, number> = {};
+  for (const e of employees) empTypeIdx[e.id] = 0;
 
   for (const dateStr of allDays) {
     const dayOfWeek = getDayOfWeek0Mon(dateStr);
@@ -266,26 +344,22 @@ export function generatePlanning(params: {
     const isPublicHoliday = publicHolidayDates.includes(dateStr);
 
     for (const emp of employees) {
-      const requestedOff = requestedOffMap[emp.id]?.has(dateStr) ?? false;
+      if (isWeekend || isPublicHoliday) continue;
+
       const permaInfo = permanenceAssignments[weekStart];
       const isPermanenceL1 = permaInfo?.g1l1 === emp.id || permaInfo?.g2l1 === emp.id;
       const isPermanenceL2 = permaInfo?.g1l2 === emp.id || permaInfo?.g2l2 === emp.id;
       const isPermanence = isPermanenceL1 || isPermanenceL2;
       const permanenceLevel = isPermanenceL1 ? 1 : isPermanenceL2 ? 2 : null;
 
-      if (isWeekend) continue;
-      if (isPublicHoliday) continue;
-
-      // Compute the daily target to keep running total on track
-      const shiftDaysLeft = remainingShiftDays[emp.id] ?? 1;
-      const dailyTarget = shiftDaysLeft > 0 ? (remainingHours[emp.id] ?? 0) / shiftDaysLeft : 0;
-
-      if (requestedOff) {
+      // Requested day off → C0
+      if ((requestedOffMap[emp.id] ?? new Set()).has(dateStr)) {
         const holidayHours = hoursForCode("C0", shiftCodes);
         entries.push({
           employeeId: emp.id,
           date: dateStr,
           shiftCode: "C0",
+          deskCode: null,
           isPermanence: false,
           permanenceLevel: null,
           isLocked: true,
@@ -293,78 +367,135 @@ export function generatePlanning(params: {
         });
         plannedHoursByEmployee[emp.id] = (plannedHoursByEmployee[emp.id] ?? 0) + holidayHours;
         remainingHours[emp.id] = (remainingHours[emp.id] ?? 0) - holidayHours;
-        remainingShiftDays[emp.id] = Math.max(0, (remainingShiftDays[emp.id] ?? 0) - 1);
         continue;
       }
 
-      const isJlDay = jlAssignments[emp.id]?.has(dateStr) ?? false;
-      if (isJlDay && emp.allowedShiftCodes.includes("JL")) {
+      // JL day
+      if ((jlAssignments[emp.id] ?? new Set()).has(dateStr) && emp.allowedShiftCodes.includes("JL")) {
         entries.push({
           employeeId: emp.id,
           date: dateStr,
           shiftCode: "JL",
+          deskCode: null,
           isPermanence: false,
           permanenceLevel: null,
           isLocked: false,
           requestedOff: false,
         });
-        // JL = 0h, does not count against remainingHours, remainingShiftDays already excludes it
         continue;
       }
 
-      const empTemplates = templatesByEmployee[emp.id] ?? [];
-      let templateShiftCode: string | null = null;
+      // Running-balance daily target
+      const shiftDaysLeft = Math.max(1, remainingShiftDays[emp.id] ?? 1);
+      const dailyTarget = (remainingHours[emp.id] ?? 0) / shiftDaysLeft;
 
-      if (empTemplates.length > 0) {
-        const rotIdx = templateRotation[emp.id] ?? 0;
-        const tpl = empTemplates[rotIdx % empTemplates.length];
-        const dayEntry = tpl.days.find((d) => d.dayOfWeek === dayOfWeek);
-        if (dayEntry) templateShiftCode = dayEntry.shiftCode;
+      // Get pre-determined type for this shift day
+      const typeIdx = empTypeIdx[emp.id] ?? 0;
+      const shiftDaysList = empShiftDays[emp.id] ?? [];
+      const shiftDayPos = shiftDaysList.indexOf(dateStr);
+      let preferredType: "onsite" | "homework" | "cowork" =
+        shiftDayPos >= 0 && shiftDayPos < (empDayTypeSequence[emp.id] ?? []).length
+          ? (empDayTypeSequence[emp.id]?.[shiftDayPos] ?? "onsite")
+          : "onsite";
+
+      empTypeIdx[emp.id] = typeIdx + 1;
+
+      // Find which office(s) this employee belongs to and get available desks
+      const empOffices = offices.filter((o) => o.employeeIds.includes(emp.id));
+      let assignedDeskCode: string | null = null;
+      let deskAvailableFromPool = false;
+
+      if (empOffices.length > 0) {
+        // Pick the first office that has available desks
+        for (const office of empOffices) {
+          const usedDesks = deskUsedByDateByOffice[dateStr]?.[office.id] ?? new Set();
+          const availableDesks = office.deskCodes.filter((dc) => !usedDesks.has(dc));
+          if (availableDesks.length > 0) {
+            deskAvailableFromPool = true;
+            // Randomly pick one
+            const randomIdx = Math.floor(Math.random() * availableDesks.length);
+            assignedDeskCode = availableDesks[randomIdx];
+            usedDesks.add(assignedDeskCode);
+            break;
+          }
+        }
+        // If no desks from any office pool, fallback (but still can go onsite if office has capacity via deskCount)
+        if (!deskAvailableFromPool) {
+          // Count how many are already onsite across all these offices
+          const totalOnsite = Object.values(deskUsedByDateByOffice[dateStr] ?? {})
+            .reduce((sum, s) => sum + s.size, 0);
+          const totalCapacity = empOffices.reduce((sum, o) =>
+            sum + (o.deskCodes.length > 0 ? o.deskCodes.length : o.deskCount), 0);
+          deskAvailableFromPool = totalOnsite < totalCapacity;
+        }
       }
 
+      // If employee has no office, they cannot go onsite
+      const canGoOnsite = empOffices.length > 0 && deskAvailableFromPool;
+
       const homeworkUsedSoFar = (emp.homeworkDaysUsedThisYear ?? 0) + (homeworkCountThisMonth[emp.id] ?? 0);
-      const canHomework = emp.homeworkEligible && homeworkUsedSoFar < HOMEWORK_DAY_LIMIT;
-      const canCowork = emp.coworkEligible;
+      const canHomework = emp.homeworkEligible &&
+        emp.allowedShiftCodes.some((c) => shiftCodes[c]?.type === "homework") &&
+        homeworkUsedSoFar < HOMEWORK_DAY_LIMIT;
+      const canCowork = emp.coworkEligible &&
+        emp.allowedShiftCodes.some((c) => shiftCodes[c]?.type === "cowork");
 
-      const totalDesksByDate = offices
-        .filter((o) => o.employeeIds.includes(emp.id))
-        .reduce((sum, o) => sum + o.deskCount, 0);
-
-      const onsiteNow = onsiteCountByDate[dateStr]?.size ?? 0;
-      const deskAvailable = onsiteNow < totalDesksByDate;
-
+      // Enforce preferred type, with fallback if constraints prevent it
       let chosenCode: string | null = null;
+      let actualDeskCode: string | null = null;
 
-      if (templateShiftCode && emp.allowedShiftCodes.includes(templateShiftCode)) {
-        // Use template code if still valid for the day's constraints
-        if (isHomeworkCode(templateShiftCode, shiftCodes) && !canHomework) {
-          chosenCode = deskAvailable
-            ? bestCodeByTarget("onsite", emp.allowedShiftCodes, shiftCodes, dailyTarget)
-            : bestCodeByTarget("cowork", emp.allowedShiftCodes, shiftCodes, dailyTarget);
-        } else if (isOnsiteCode(templateShiftCode, shiftCodes) && !deskAvailable) {
-          chosenCode = canHomework
-            ? bestCodeByTarget("homework", emp.allowedShiftCodes, shiftCodes, dailyTarget)
-            : bestCodeByTarget("cowork", emp.allowedShiftCodes, shiftCodes, dailyTarget);
-        } else {
-          chosenCode = templateShiftCode;
-        }
-      } else {
-        // No template — pick based on desk availability, targeting daily hours
-        if (deskAvailable) {
+      if (preferredType === "onsite") {
+        if (canGoOnsite) {
           chosenCode = bestCodeByTarget("onsite", emp.allowedShiftCodes, shiftCodes, dailyTarget);
-        } else if (canHomework) {
+          actualDeskCode = assignedDeskCode;
+        } else {
+          // Desk not available — fallback to homework or cowork
+          if (canHomework) {
+            chosenCode = bestCodeByTarget("homework", emp.allowedShiftCodes, shiftCodes, dailyTarget);
+          } else if (canCowork) {
+            chosenCode = bestCodeByTarget("cowork", emp.allowedShiftCodes, shiftCodes, dailyTarget);
+          } else {
+            // No remote option at all, force onsite without desk code (shouldn't normally happen)
+            chosenCode = bestCodeByTarget("onsite", emp.allowedShiftCodes, shiftCodes, dailyTarget);
+          }
+        }
+      } else if (preferredType === "homework") {
+        if (canHomework) {
           chosenCode = bestCodeByTarget("homework", emp.allowedShiftCodes, shiftCodes, dailyTarget);
+        } else if (canGoOnsite) {
+          chosenCode = bestCodeByTarget("onsite", emp.allowedShiftCodes, shiftCodes, dailyTarget);
+          actualDeskCode = assignedDeskCode;
         } else if (canCowork) {
           chosenCode = bestCodeByTarget("cowork", emp.allowedShiftCodes, shiftCodes, dailyTarget);
-        } else {
+        }
+      } else {
+        // cowork
+        if (canCowork) {
+          chosenCode = bestCodeByTarget("cowork", emp.allowedShiftCodes, shiftCodes, dailyTarget);
+        } else if (canGoOnsite) {
           chosenCode = bestCodeByTarget("onsite", emp.allowedShiftCodes, shiftCodes, dailyTarget);
+          actualDeskCode = assignedDeskCode;
+        } else if (canHomework) {
+          chosenCode = bestCodeByTarget("homework", emp.allowedShiftCodes, shiftCodes, dailyTarget);
+        }
+      }
+
+      // If desk was "reserved" but we ended up not going onsite, release it
+      if (actualDeskCode === null && assignedDeskCode !== null) {
+        // Release the desk back to the pool
+        for (const office of empOffices) {
+          const usedDesks = deskUsedByDateByOffice[dateStr]?.[office.id];
+          if (usedDesks?.has(assignedDeskCode)) {
+            usedDesks.delete(assignedDeskCode);
+            break;
+          }
         }
       }
 
       const assignedHours = hoursForCode(chosenCode, shiftCodes);
 
       if (isOnsiteCode(chosenCode, shiftCodes)) {
-        onsiteCountByDate[dateStr].add(emp.id);
+        onsiteCountByEmployee[emp.id] = (onsiteCountByEmployee[emp.id] ?? 0) + 1;
       }
       if (isHomeworkCode(chosenCode, shiftCodes)) {
         homeworkCountThisMonth[emp.id] = (homeworkCountThisMonth[emp.id] ?? 0) + 1;
@@ -378,27 +509,23 @@ export function generatePlanning(params: {
         employeeId: emp.id,
         date: dateStr,
         shiftCode: chosenCode,
+        deskCode: actualDeskCode,
         isPermanence: isPermanence,
         permanenceLevel,
         isLocked: false,
         requestedOff: false,
       });
     }
-
-    if (dayOfWeek === 4) {
-      for (const e of employees) templateRotation[e.id] = (templateRotation[e.id] ?? 0) + 1;
-    }
   }
 
+  // ── VIOLATIONS ─────────────────────────────────────────────────────────────
   const violations: PlanningViolation[] = [];
 
   for (const dateStr of workingDays) {
     const dayEntries = entries.filter((e) => e.date === dateStr);
-    const onsiteEmployeeIds = dayEntries
-      .filter((e) => isOnsiteCode(e.shiftCode, shiftCodes) || e.shiftCode === "JL")
-      .map((e) => e.employeeId);
-
-    const onsiteSet = new Set(onsiteEmployeeIds);
+    const onsiteSet = new Set(
+      dayEntries.filter((e) => isOnsiteCode(e.shiftCode, shiftCodes)).map((e) => e.employeeId)
+    );
 
     const spocPresent = employees.filter((e) => e.isSpoc).some((e) => onsiteSet.has(e.id));
     if (!spocPresent && employees.some((e) => e.isSpoc)) {
@@ -416,13 +543,10 @@ export function generatePlanning(params: {
     const perma1Ids = [permaInfo?.g1l1, permaInfo?.g2l1].filter(Boolean) as number[];
     const perma2Ids = [permaInfo?.g1l2, permaInfo?.g2l2].filter(Boolean) as number[];
 
-    const perma1OnSite = perma1Ids.some((id) => onsiteSet.has(id));
-    if (!perma1OnSite && perma1Ids.length > 0) {
+    if (perma1Ids.length > 0 && !perma1Ids.some((id) => onsiteSet.has(id))) {
       violations.push({ date: dateStr, type: "missing_perma1", message: "No Permanence Level 1 on-site", employeeId: null });
     }
-
-    const perma2OnSite = perma2Ids.some((id) => onsiteSet.has(id));
-    if (!perma2OnSite && perma2Ids.length > 0) {
+    if (perma2Ids.length > 0 && !perma2Ids.some((id) => onsiteSet.has(id))) {
       violations.push({ date: dateStr, type: "missing_perma2", message: "No Permanence Level 2 on-site", employeeId: null });
     }
   }
@@ -434,7 +558,7 @@ export function generatePlanning(params: {
       violations.push({
         date: `${year}-${String(month).padStart(2, "0")}`,
         type: "prm_exceeded",
-        message: `${emp.id}: PRM ${prm.toFixed(1)}h out of range (±10h)`,
+        message: `Employee ${emp.id}: PRM ${prm.toFixed(1)}h out of range (±10h)`,
         employeeId: emp.id,
       });
     }
@@ -445,6 +569,18 @@ export function generatePlanning(params: {
         date: `${year}-${String(month).padStart(2, "0")}`,
         type: "homework_limit",
         message: `Employee ${emp.id}: homework days ${hwTotal}/${HOMEWORK_DAY_LIMIT} exceeded`,
+        employeeId: emp.id,
+      });
+    }
+
+    // Check 50% onsite minimum
+    const shiftDays = empShiftDays[emp.id]?.length ?? 0;
+    const onsiteCount = onsiteCountByEmployee[emp.id] ?? 0;
+    if (shiftDays > 0 && onsiteCount < Math.ceil(shiftDays * MIN_ONSITE_RATIO)) {
+      violations.push({
+        date: `${year}-${String(month).padStart(2, "0")}`,
+        type: "insufficient_onsite",
+        message: `Employee ${emp.id}: only ${onsiteCount}/${shiftDays} days onsite (min 50%)`,
         employeeId: emp.id,
       });
     }

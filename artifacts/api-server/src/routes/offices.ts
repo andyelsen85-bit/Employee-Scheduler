@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db, officesTable, officeEmployeesTable } from "@workspace/db";
 import {
   CreateOfficeBody,
@@ -16,17 +16,13 @@ async function getOfficesWithEmployees() {
   const offices = await db.select().from(officesTable).orderBy(officesTable.name);
   const assignments = await db.select().from(officeEmployeesTable);
 
-  return offices.map((o) => {
-    const officeAssignments = assignments.filter((a) => a.officeId === o.id);
-    return {
-      ...o,
-      employeeIds: officeAssignments.map((a) => a.employeeId),
-      deskAssignments: officeAssignments.map((a) => ({
-        employeeId: a.employeeId,
-        deskCode: a.deskCode ?? null,
-      })),
-    };
-  });
+  return offices.map((o) => ({
+    id: o.id,
+    name: o.name,
+    deskCount: o.deskCount,
+    deskCodes: (o.deskCodes as string[]) ?? [],
+    employeeIds: assignments.filter((a) => a.officeId === o.id).map((a) => a.employeeId),
+  }));
 }
 
 router.get("/offices", async (_req, res): Promise<void> => {
@@ -41,7 +37,11 @@ router.post("/offices", async (req, res): Promise<void> => {
   }
   const [office] = await db
     .insert(officesTable)
-    .values({ name: parsed.data.name, deskCount: parsed.data.deskCount })
+    .values({
+      name: parsed.data.name,
+      deskCount: parsed.data.deskCount,
+      deskCodes: parsed.data.deskCodes ?? [],
+    })
     .returning();
 
   if (parsed.data.employeeIds && parsed.data.employeeIds.length > 0) {
@@ -51,9 +51,11 @@ router.post("/offices", async (req, res): Promise<void> => {
   }
 
   res.status(201).json({
-    ...office,
+    id: office.id,
+    name: office.name,
+    deskCount: office.deskCount,
+    deskCodes: (office.deskCodes as string[]) ?? [],
     employeeIds: parsed.data.employeeIds ?? [],
-    deskAssignments: (parsed.data.employeeIds ?? []).map((eid) => ({ employeeId: eid, deskCode: null })),
   });
 });
 
@@ -71,6 +73,7 @@ router.put("/offices/:id", async (req, res): Promise<void> => {
   const updateData: Partial<typeof officesTable.$inferInsert> = {};
   if (parsed.data.name !== undefined) updateData.name = parsed.data.name;
   if (parsed.data.deskCount !== undefined) updateData.deskCount = parsed.data.deskCount;
+  if (parsed.data.deskCodes !== undefined) updateData.deskCodes = parsed.data.deskCodes;
 
   const [office] = await db
     .update(officesTable)
@@ -86,9 +89,11 @@ router.put("/offices/:id", async (req, res): Promise<void> => {
     .from(officeEmployeesTable)
     .where(eq(officeEmployeesTable.officeId, office.id));
   res.json({
-    ...office,
+    id: office.id,
+    name: office.name,
+    deskCount: office.deskCount,
+    deskCodes: (office.deskCodes as string[]) ?? [],
     employeeIds: oeRows.map((a) => a.employeeId),
-    deskAssignments: oeRows.map((a) => ({ employeeId: a.employeeId, deskCode: a.deskCode ?? null })),
   });
 });
 
@@ -122,14 +127,10 @@ router.put("/offices/:id/employees", async (req, res): Promise<void> => {
     return;
   }
   await db.delete(officeEmployeesTable).where(eq(officeEmployeesTable.officeId, params.data.id));
-  const assignments = parsed.data.assignments;
-  if (assignments.length > 0) {
+  const empIds = parsed.data.employeeIds;
+  if (empIds.length > 0) {
     await db.insert(officeEmployeesTable).values(
-      assignments.map((a) => ({
-        officeId: params.data.id,
-        employeeId: a.employeeId,
-        deskCode: a.deskCode ?? null,
-      }))
+      empIds.map((eid) => ({ officeId: params.data.id, employeeId: eid }))
     );
   }
   const [office] = await db.select().from(officesTable).where(eq(officesTable.id, params.data.id));
@@ -138,9 +139,11 @@ router.put("/offices/:id/employees", async (req, res): Promise<void> => {
     return;
   }
   res.json({
-    ...office,
-    employeeIds: assignments.map((a) => a.employeeId),
-    deskAssignments: assignments.map((a) => ({ employeeId: a.employeeId, deskCode: a.deskCode ?? null })),
+    id: office.id,
+    name: office.name,
+    deskCount: office.deskCount,
+    deskCodes: (office.deskCodes as string[]) ?? [],
+    employeeIds: empIds,
   });
 });
 

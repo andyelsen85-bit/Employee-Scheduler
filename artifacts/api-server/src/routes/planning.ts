@@ -54,6 +54,7 @@ async function buildMonthResponse(year: number, month: number) {
       employeeId: e.employeeId,
       date: e.date,
       shiftCode: e.shiftCode,
+      deskCode: e.deskCode ?? null,
       isPermanence: e.isPermanence,
       permanenceLevel: e.permanenceLevel,
       isLocked: e.isLocked,
@@ -112,7 +113,9 @@ router.post("/planning/:year/:month/generate", async (req, res): Promise<void> =
   for (const sc of shiftCodeRows) shiftCodes[sc.code] = sc;
 
   const officesWithEmps = offices.map((o) => ({
-    ...o,
+    id: o.id,
+    deskCount: o.deskCount,
+    deskCodes: (o.deskCodes as string[]) ?? [],
     employeeIds: oeRows.filter((oe) => oe.officeId === o.id).map((oe) => oe.employeeId),
   }));
 
@@ -166,6 +169,7 @@ router.post("/planning/:year/:month/generate", async (req, res): Promise<void> =
         employeeId: e.employeeId,
         date: e.date,
         shiftCode: e.shiftCode,
+        deskCode: e.deskCode ?? null,
         isPermanence: e.isPermanence,
         permanenceLevel: e.permanenceLevel,
         isLocked: e.isLocked,

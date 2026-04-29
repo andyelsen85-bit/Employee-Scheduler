@@ -81,34 +81,31 @@ export interface UpdateCountersBody {
   homeworkDaysUsedThisYear?: number;
 }
 
-export interface DeskAssignment {
-  employeeId: number;
-  deskCode?: string | null;
-}
-
 export interface Office {
   id: number;
   name: string;
   deskCount: number;
+  /** Pool of shared desk codes available in this office */
+  deskCodes: string[];
   /** Employees eligible to use this office */
   employeeIds: number[];
-  /** Desk code assignments per employee */
-  deskAssignments: DeskAssignment[];
 }
 
 export interface UpdateOfficeEmployeesBody {
-  assignments: DeskAssignment[];
+  employeeIds: number[];
 }
 
 export interface CreateOfficeBody {
   name: string;
   deskCount: number;
+  deskCodes?: string[];
   employeeIds?: number[];
 }
 
 export interface UpdateOfficeBody {
   name?: string;
   deskCount?: number;
+  deskCodes?: string[];
 }
 
 export interface ShiftCode {
@@ -191,6 +188,8 @@ export interface PlanningEntry {
   employeeId: number;
   date: string;
   shiftCode?: string | null;
+  /** Randomly assigned shared desk for onsite days */
+  deskCode?: string | null;
   isPermanence: boolean;
   permanenceLevel?: number | null;
   /** True when manually set or confirmed */

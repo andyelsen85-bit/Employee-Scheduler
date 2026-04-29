@@ -224,17 +224,12 @@ export const ListOfficesResponseItem = zod.object({
   id: zod.number(),
   name: zod.string(),
   deskCount: zod.number(),
+  deskCodes: zod
+    .array(zod.string())
+    .describe("Pool of shared desk codes available in this office"),
   employeeIds: zod
     .array(zod.number())
     .describe("Employees eligible to use this office"),
-  deskAssignments: zod
-    .array(
-      zod.object({
-        employeeId: zod.number(),
-        deskCode: zod.string().nullish(),
-      }),
-    )
-    .describe("Desk code assignments per employee"),
 });
 export const ListOfficesResponse = zod.array(ListOfficesResponseItem);
 
@@ -244,6 +239,7 @@ export const ListOfficesResponse = zod.array(ListOfficesResponseItem);
 export const CreateOfficeBody = zod.object({
   name: zod.string(),
   deskCount: zod.number(),
+  deskCodes: zod.array(zod.string()).optional(),
   employeeIds: zod.array(zod.number()).optional(),
 });
 
@@ -254,23 +250,19 @@ export const UpdateOfficeParams = zod.object({
 export const UpdateOfficeBody = zod.object({
   name: zod.string().optional(),
   deskCount: zod.number().optional(),
+  deskCodes: zod.array(zod.string()).optional(),
 });
 
 export const UpdateOfficeResponse = zod.object({
   id: zod.number(),
   name: zod.string(),
   deskCount: zod.number(),
+  deskCodes: zod
+    .array(zod.string())
+    .describe("Pool of shared desk codes available in this office"),
   employeeIds: zod
     .array(zod.number())
     .describe("Employees eligible to use this office"),
-  deskAssignments: zod
-    .array(
-      zod.object({
-        employeeId: zod.number(),
-        deskCode: zod.string().nullish(),
-      }),
-    )
-    .describe("Desk code assignments per employee"),
 });
 
 export const DeleteOfficeParams = zod.object({
@@ -285,29 +277,19 @@ export const UpdateOfficeEmployeesParams = zod.object({
 });
 
 export const UpdateOfficeEmployeesBody = zod.object({
-  assignments: zod.array(
-    zod.object({
-      employeeId: zod.number(),
-      deskCode: zod.string().nullish(),
-    }),
-  ),
+  employeeIds: zod.array(zod.number()),
 });
 
 export const UpdateOfficeEmployeesResponse = zod.object({
   id: zod.number(),
   name: zod.string(),
   deskCount: zod.number(),
+  deskCodes: zod
+    .array(zod.string())
+    .describe("Pool of shared desk codes available in this office"),
   employeeIds: zod
     .array(zod.number())
     .describe("Employees eligible to use this office"),
-  deskAssignments: zod
-    .array(
-      zod.object({
-        employeeId: zod.number(),
-        deskCode: zod.string().nullish(),
-      }),
-    )
-    .describe("Desk code assignments per employee"),
 });
 
 /**
@@ -549,6 +531,10 @@ export const GetMonthPlanningResponse = zod.object({
       employeeId: zod.number(),
       date: zod.string(),
       shiftCode: zod.string().nullish(),
+      deskCode: zod
+        .string()
+        .nullish()
+        .describe("Randomly assigned shared desk for onsite days"),
       isPermanence: zod.boolean(),
       permanenceLevel: zod.number().nullish(),
       isLocked: zod.boolean().describe("True when manually set or confirmed"),
@@ -604,6 +590,10 @@ export const GeneratePlanningResponse = zod.object({
       employeeId: zod.number(),
       date: zod.string(),
       shiftCode: zod.string().nullish(),
+      deskCode: zod
+        .string()
+        .nullish()
+        .describe("Randomly assigned shared desk for onsite days"),
       isPermanence: zod.boolean(),
       permanenceLevel: zod.number().nullish(),
       isLocked: zod.boolean().describe("True when manually set or confirmed"),
@@ -644,6 +634,10 @@ export const ConfirmPlanningResponse = zod.object({
       employeeId: zod.number(),
       date: zod.string(),
       shiftCode: zod.string().nullish(),
+      deskCode: zod
+        .string()
+        .nullish()
+        .describe("Randomly assigned shared desk for onsite days"),
       isPermanence: zod.boolean(),
       permanenceLevel: zod.number().nullish(),
       isLocked: zod.boolean().describe("True when manually set or confirmed"),
@@ -686,6 +680,10 @@ export const UpdatePlanningEntryResponse = zod.object({
   employeeId: zod.number(),
   date: zod.string(),
   shiftCode: zod.string().nullish(),
+  deskCode: zod
+    .string()
+    .nullish()
+    .describe("Randomly assigned shared desk for onsite days"),
   isPermanence: zod.boolean(),
   permanenceLevel: zod.number().nullish(),
   isLocked: zod.boolean().describe("True when manually set or confirmed"),

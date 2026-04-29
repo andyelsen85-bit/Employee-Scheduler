@@ -831,16 +831,6 @@ components:
           type: integer
 
     # OFFICE
-    DeskAssignment:
-      type: object
-      properties:
-        employeeId:
-          type: integer
-        deskCode:
-          type: string
-          nullable: true
-      required: [employeeId]
-
     Office:
       type: object
       properties:
@@ -850,26 +840,26 @@ components:
           type: string
         deskCount:
           type: integer
+        deskCodes:
+          type: array
+          items:
+            type: string
+          description: "Pool of shared desk codes available in this office"
         employeeIds:
           type: array
           items:
             type: integer
           description: "Employees eligible to use this office"
-        deskAssignments:
-          type: array
-          items:
-            $ref: "#/components/schemas/DeskAssignment"
-          description: "Desk code assignments per employee"
-      required: [id, name, deskCount, employeeIds, deskAssignments]
+      required: [id, name, deskCount, deskCodes, employeeIds]
 
     UpdateOfficeEmployeesBody:
       type: object
       properties:
-        assignments:
+        employeeIds:
           type: array
           items:
-            $ref: "#/components/schemas/DeskAssignment"
-      required: [assignments]
+            type: integer
+      required: [employeeIds]
 
     CreateOfficeBody:
       type: object
@@ -878,6 +868,10 @@ components:
           type: string
         deskCount:
           type: integer
+        deskCodes:
+          type: array
+          items:
+            type: string
         employeeIds:
           type: array
           items:
@@ -891,6 +885,10 @@ components:
           type: string
         deskCount:
           type: integer
+        deskCodes:
+          type: array
+          items:
+            type: string
 
     # SHIFT CODE
     ShiftCode:
@@ -1047,10 +1045,13 @@ components:
           type: integer
         date:
           type: string
-
         shiftCode:
           type: string
           nullable: true
+        deskCode:
+          type: string
+          nullable: true
+          description: "Randomly assigned shared desk for onsite days"
         isPermanence:
           type: boolean
         permanenceLevel:

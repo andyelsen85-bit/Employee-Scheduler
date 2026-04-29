@@ -24,6 +24,7 @@ export const planningEntriesTable = pgTable("planning_entries", {
   employeeId: integer("employee_id").notNull(),
   date: text("date").notNull(),
   shiftCode: text("shift_code"),
+  deskCode: text("desk_code"),
   isPermanence: boolean("is_permanence").notNull().default(false),
   permanenceLevel: integer("permanence_level"),
   isLocked: boolean("is_locked").notNull().default(false),
