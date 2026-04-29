@@ -671,25 +671,51 @@ export function generatePlanning(params: {
       const weekPermanence = permanenceAssignments[weekStart];
       const isOnPermanenceDuty = weekPermanence?.g1 === emp.id || weekPermanence?.g2 === emp.id;
 
-      // Day-of-week code preference: rotate round-robin through all valid non-JL/non-C0
-      // preferences for this weekday. Deduplicate by code first so duplicates don't skew
-      // the rotation. The counter advances once per actual shift day reached here.
-      const matchingPrefs = (emp.dayCodePreferences ?? [])
+      // Day-of-week code preference: rotate round-robin through the effective preference
+      // pool for this weekday. Deduplicate by code first.
+      //
+      // Two cases:
+      //   • Single-type weekday preference (e.g. Bassst always TT9 on Thursday, Nanz always
+      //     TT on Thursday): all preferences for this weekday share one location type.
+      //     → Honour them as explicit per-day overrides; they will override the pre-determined
+      //       week type below so the employee genuinely works from that location on that day.
+      //
+      //   • Mixed-type weekday preference (e.g. Monday listed with both X80 onsite AND TT8
+      //     homework): the round-robin would randomly assign different types on the same
+      //     weekday across weeks, causing days within a week to have different location types.
+      //     → Filter to only the codes whose type matches the pre-determined week type, so
+      //       the week stays grouped. If none match, fall back to the full list.
+      const allDayPrefs = (emp.dayCodePreferences ?? [])
         .filter((p) => p.day === dayOfWeek && p.code !== "JL" && p.code !== "C0" && emp.allowedShiftCodes.includes(p.code))
         .filter((p, idx, arr) => arr.findIndex((q) => q.code === p.code) === idx);
+
+      const prefTypeSet = new Set(
+        allDayPrefs.map((p) => shiftCodes[p.code]?.type).filter(Boolean)
+      );
+      const hasMixedPrefTypes = prefTypeSet.size > 1;
+
+      // For mixed preferences, keep only those matching the pre-determined week type
+      const weekTypeFiltered = hasMixedPrefTypes
+        ? allDayPrefs.filter((p) => shiftCodes[p.code]?.type === preferredType)
+        : allDayPrefs;
+      const effectivePrefs = weekTypeFiltered.length > 0 ? weekTypeFiltered : allDayPrefs;
+
       let dayPrefCode: string | null = null;
-      if (matchingPrefs.length > 0) {
+      if (effectivePrefs.length > 0) {
         const rotIdx = dayPrefRotation[emp.id][dayOfWeek] ?? 0;
-        dayPrefCode = matchingPrefs[rotIdx % matchingPrefs.length].code;
+        dayPrefCode = effectivePrefs[rotIdx % effectivePrefs.length].code;
         dayPrefRotation[emp.id][dayOfWeek] = rotIdx + 1;
       }
       const dayPrefCodeValid = dayPrefCode !== null;
       const dayPrefType = dayPrefCodeValid ? (shiftCodes[dayPrefCode!]?.type as "onsite" | "homework" | "cowork" | undefined) ?? null : null;
 
-      // NOTE: we intentionally do NOT override preferredType with dayPrefType here.
-      // The weekly type (onsite / homework / cowork) is pre-determined in Phase 1 so that
-      // all days of a week stay in the same location group. Day preferences only influence
-      // WHICH specific shift code is selected (via pickCode), not the location type.
+      // Single-type explicit day preferences override the week type for this specific day.
+      // This honours Bassst's TT9 on Thursday, Nanz's TT on Thursday, Ben2's TT on
+      // Monday/Wednesday, etc. — regardless of what the pre-determined week type is.
+      // Mixed-type preferences have already been filtered above so they won't flip the type.
+      if (dayPrefType === "onsite" || dayPrefType === "homework" || dayPrefType === "cowork") {
+        preferredType = dayPrefType;
+      }
 
       // Permanence duty overrides everything — the employee must be onsite.
       // Day preferences and week-type randomisation are both subordinate to this rule.
