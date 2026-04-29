@@ -2,22 +2,22 @@ import { db, shiftCodesTable, publicHolidaysTable, monthlyConfigsTable } from "@
 import { eq, and } from "drizzle-orm";
 
 const SHIFT_CODES = [
-  { code: "X78", label: "Onsite 7h48", hours: 7.8, type: "onsite" },
-  { code: "X79", label: "Onsite 7h54", hours: 7.9, type: "onsite" },
-  { code: "X80", label: "Onsite 8h00", hours: 8.0, type: "onsite" },
-  { code: "X81", label: "Onsite 8h06", hours: 8.1, type: "onsite" },
-  { code: "X82", label: "Onsite 8h12", hours: 8.2, type: "onsite" },
-  { code: "TT2", label: "Homework 7h12", hours: 7.2, type: "homework" },
-  { code: "TT4", label: "Homework 7h24", hours: 7.4, type: "homework" },
-  { code: "TT6", label: "Homework 7h36", hours: 7.6, type: "homework" },
-  { code: "TT8", label: "Homework 7h48", hours: 7.8, type: "homework" },
-  { code: "TT9", label: "Homework 7h54", hours: 7.9, type: "homework" },
-  { code: "CW4", label: "Cowork 7h24", hours: 7.4, type: "cowork" },
-  { code: "CW6", label: "Cowork 7h36", hours: 7.6, type: "cowork" },
-  { code: "CW8", label: "Cowork 7h48", hours: 7.8, type: "cowork" },
-  { code: "CW9", label: "Cowork 7h54", hours: 7.9, type: "cowork" },
-  { code: "C0", label: "Holiday / Congé", hours: 7.6, type: "holiday" },
-  { code: "JL", label: "CCT-FHL (JL Day)", hours: 0, type: "jl" },
+  { code: "X78", label: "Onsite 4h00",  hours: 4,   type: "onsite" },
+  { code: "X79", label: "Onsite 6h00",  hours: 6,   type: "onsite" },
+  { code: "X80", label: "Onsite 8h00",  hours: 8,   type: "onsite" },
+  { code: "X81", label: "Onsite 9h00",  hours: 9,   type: "onsite" },
+  { code: "X82", label: "Onsite 10h00", hours: 10,  type: "onsite" },
+  { code: "TT2", label: "Homework 2h",  hours: 2,   type: "homework" },
+  { code: "TT4", label: "Homework 4h",  hours: 4,   type: "homework" },
+  { code: "TT6", label: "Homework 6h",  hours: 6,   type: "homework" },
+  { code: "TT8", label: "Homework 8h",  hours: 8,   type: "homework" },
+  { code: "TT9", label: "Homework 9h",  hours: 9,   type: "homework" },
+  { code: "CW4", label: "Cowork 4h",    hours: 4,   type: "cowork" },
+  { code: "CW6", label: "Cowork 6h",    hours: 6,   type: "cowork" },
+  { code: "CW8", label: "Cowork 8h",    hours: 8,   type: "cowork" },
+  { code: "CW9", label: "Cowork 9h",    hours: 9,   type: "cowork" },
+  { code: "C0",  label: "Holiday / Congé (7h36)", hours: 7.6, type: "holiday" },
+  { code: "JL",  label: "CCT-FHL (JL Day)",       hours: 0,   type: "jl" },
 ];
 
 const LU_PUBLIC_HOLIDAYS_2026 = [
@@ -53,7 +53,10 @@ async function seedShiftCodes() {
       await db.insert(shiftCodesTable).values(sc);
       console.log(`  + ${sc.code}`);
     } else {
-      console.log(`  = ${sc.code} (already exists)`);
+      await db.update(shiftCodesTable)
+        .set({ label: sc.label, hours: sc.hours, type: sc.type })
+        .where(eq(shiftCodesTable.code, sc.code));
+      console.log(`  ~ ${sc.code} (updated)`);
     }
   }
 }

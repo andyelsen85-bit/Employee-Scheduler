@@ -59,7 +59,6 @@ export type PlanningViolation = {
 const HOMEWORK_DAY_LIMIT = 35;
 const PRM_MAX = 10;
 const PRM_MIN = -10;
-const HOLIDAY_HOURS = 7.6;
 
 function getWorkingDays(year: number, month: number, publicHolidayDates: string[]): string[] {
   const start = startOfMonth(new Date(year, month - 1));
@@ -89,28 +88,30 @@ function getWeekNumber(dateStr: string): string {
   return format(monday, "yyyy-MM-dd");
 }
 
-function bestOnsiteCode(allowed: string[], shiftCodes: Record<string, ShiftCodeRecord>): string | null {
-  const priority = ["X82", "X81", "X80", "X79", "X78"];
-  for (const c of priority) {
-    if (allowed.includes(c) && shiftCodes[c]) return c;
-  }
-  return null;
-}
+/**
+ * Pick the code of a given type whose hours is closest to targetHours.
+ * Among equal distance, prefer higher hours (to avoid falling short).
+ */
+function bestCodeByTarget(
+  type: "onsite" | "homework" | "cowork",
+  allowed: string[],
+  shiftCodes: Record<string, ShiftCodeRecord>,
+  targetHours: number
+): string | null {
+  const candidates = allowed
+    .filter((c) => shiftCodes[c]?.type === type)
+    .map((c) => ({ code: c, hours: shiftCodes[c].hours }));
 
-function bestHomeworkCode(allowed: string[], shiftCodes: Record<string, ShiftCodeRecord>): string | null {
-  const priority = ["TT9", "TT8", "TT6", "TT4", "TT2"];
-  for (const c of priority) {
-    if (allowed.includes(c) && shiftCodes[c]) return c;
-  }
-  return null;
-}
+  if (candidates.length === 0) return null;
 
-function bestCoworkCode(allowed: string[], shiftCodes: Record<string, ShiftCodeRecord>): string | null {
-  const priority = ["CW9", "CW8", "CW6", "CW4"];
-  for (const c of priority) {
-    if (allowed.includes(c) && shiftCodes[c]) return c;
-  }
-  return null;
+  candidates.sort((a, b) => {
+    const da = Math.abs(a.hours - targetHours);
+    const db = Math.abs(b.hours - targetHours);
+    if (Math.abs(da - db) > 0.001) return da - db;
+    return b.hours - a.hours;
+  });
+
+  return candidates[0].code;
 }
 
 function hoursForCode(code: string | null, shiftCodes: Record<string, ShiftCodeRecord>): number {
@@ -128,16 +129,9 @@ function isHomeworkCode(code: string | null, shiftCodes: Record<string, ShiftCod
   return shiftCodes[code]?.type === "homework";
 }
 
-function isCoworkCode(code: string | null, shiftCodes: Record<string, ShiftCodeRecord>): boolean {
-  if (!code) return false;
-  return shiftCodes[code]?.type === "cowork";
-}
-
 /**
  * Distribute jlDays JL shifts per employee across working days.
  * Constraint: no two employees share the same JL date.
- * Strategy: for each employee (in order), greedily pick days with the lowest
- * current JL occupancy, spreading assignments across the month.
  */
 function distributeJlDays(
   employees: EmployeeRecord[],
@@ -219,7 +213,10 @@ export function generatePlanning(params: {
 
   const weekStarts = [...new Set(workingDays.map(getWeekNumber))];
 
-  const permanenceAssignments: Record<string, { g1l1: number | null; g1l2: number | null; g2l1: number | null; g2l2: number | null }> = {};
+  const permanenceAssignments: Record<
+    string,
+    { g1l1: number | null; g1l2: number | null; g2l1: number | null; g2l2: number | null }
+  > = {};
 
   function rotateAssign(group: EmployeeRecord[], weekIdx: number): number | null {
     if (group.length === 0) return null;
@@ -236,6 +233,16 @@ export function generatePlanning(params: {
   });
 
   const jlAssignments = distributeJlDays(employees, workingDays, jlDays);
+
+  // Per-employee running balance for hour-accurate planning
+  // remainingHours: hours still to assign; remainingShiftDays: days that still have a shift (not JL)
+  const remainingHours: Record<number, number> = {};
+  const remainingShiftDays: Record<number, number> = {};
+  for (const emp of employees) {
+    const jlCount = jlAssignments[emp.id]?.size ?? 0;
+    remainingHours[emp.id] = contractualHours;
+    remainingShiftDays[emp.id] = workingDays.length - jlCount;
+  }
 
   const onsiteCountByDate: Record<string, Set<number>> = {};
   for (const d of allDays) onsiteCountByDate[d] = new Set();
@@ -261,22 +268,20 @@ export function generatePlanning(params: {
     for (const emp of employees) {
       const requestedOff = requestedOffMap[emp.id]?.has(dateStr) ?? false;
       const permaInfo = permanenceAssignments[weekStart];
-      const isPermanenceL1 =
-        (permaInfo?.g1l1 === emp.id) || (permaInfo?.g2l1 === emp.id);
-      const isPermanenceL2 =
-        (permaInfo?.g1l2 === emp.id) || (permaInfo?.g2l2 === emp.id);
+      const isPermanenceL1 = permaInfo?.g1l1 === emp.id || permaInfo?.g2l1 === emp.id;
+      const isPermanenceL2 = permaInfo?.g1l2 === emp.id || permaInfo?.g2l2 === emp.id;
       const isPermanence = isPermanenceL1 || isPermanenceL2;
       const permanenceLevel = isPermanenceL1 ? 1 : isPermanenceL2 ? 2 : null;
 
-      if (isWeekend) {
-        continue;
-      }
+      if (isWeekend) continue;
+      if (isPublicHoliday) continue;
 
-      if (isPublicHoliday) {
-        continue;
-      }
+      // Compute the daily target to keep running total on track
+      const shiftDaysLeft = remainingShiftDays[emp.id] ?? 1;
+      const dailyTarget = shiftDaysLeft > 0 ? (remainingHours[emp.id] ?? 0) / shiftDaysLeft : 0;
 
       if (requestedOff) {
+        const holidayHours = hoursForCode("C0", shiftCodes);
         entries.push({
           employeeId: emp.id,
           date: dateStr,
@@ -286,7 +291,9 @@ export function generatePlanning(params: {
           isLocked: true,
           requestedOff: true,
         });
-        plannedHoursByEmployee[emp.id] = (plannedHoursByEmployee[emp.id] ?? 0) + HOLIDAY_HOURS;
+        plannedHoursByEmployee[emp.id] = (plannedHoursByEmployee[emp.id] ?? 0) + holidayHours;
+        remainingHours[emp.id] = (remainingHours[emp.id] ?? 0) - holidayHours;
+        remainingShiftDays[emp.id] = Math.max(0, (remainingShiftDays[emp.id] ?? 0) - 1);
         continue;
       }
 
@@ -301,7 +308,7 @@ export function generatePlanning(params: {
           isLocked: false,
           requestedOff: false,
         });
-        plannedHoursByEmployee[emp.id] = (plannedHoursByEmployee[emp.id] ?? 0) + hoursForCode("JL", shiftCodes);
+        // JL = 0h, does not count against remainingHours, remainingShiftDays already excludes it
         continue;
       }
 
@@ -329,24 +336,32 @@ export function generatePlanning(params: {
       let chosenCode: string | null = null;
 
       if (templateShiftCode && emp.allowedShiftCodes.includes(templateShiftCode)) {
+        // Use template code if still valid for the day's constraints
         if (isHomeworkCode(templateShiftCode, shiftCodes) && !canHomework) {
-          chosenCode = deskAvailable ? bestOnsiteCode(emp.allowedShiftCodes, shiftCodes) : bestCoworkCode(emp.allowedShiftCodes, shiftCodes);
+          chosenCode = deskAvailable
+            ? bestCodeByTarget("onsite", emp.allowedShiftCodes, shiftCodes, dailyTarget)
+            : bestCodeByTarget("cowork", emp.allowedShiftCodes, shiftCodes, dailyTarget);
         } else if (isOnsiteCode(templateShiftCode, shiftCodes) && !deskAvailable) {
-          chosenCode = canHomework ? bestHomeworkCode(emp.allowedShiftCodes, shiftCodes) : bestCoworkCode(emp.allowedShiftCodes, shiftCodes);
+          chosenCode = canHomework
+            ? bestCodeByTarget("homework", emp.allowedShiftCodes, shiftCodes, dailyTarget)
+            : bestCodeByTarget("cowork", emp.allowedShiftCodes, shiftCodes, dailyTarget);
         } else {
           chosenCode = templateShiftCode;
         }
       } else {
+        // No template — pick based on desk availability, targeting daily hours
         if (deskAvailable) {
-          chosenCode = bestOnsiteCode(emp.allowedShiftCodes, shiftCodes);
+          chosenCode = bestCodeByTarget("onsite", emp.allowedShiftCodes, shiftCodes, dailyTarget);
         } else if (canHomework) {
-          chosenCode = bestHomeworkCode(emp.allowedShiftCodes, shiftCodes);
+          chosenCode = bestCodeByTarget("homework", emp.allowedShiftCodes, shiftCodes, dailyTarget);
         } else if (canCowork) {
-          chosenCode = bestCoworkCode(emp.allowedShiftCodes, shiftCodes);
+          chosenCode = bestCodeByTarget("cowork", emp.allowedShiftCodes, shiftCodes, dailyTarget);
         } else {
-          chosenCode = bestOnsiteCode(emp.allowedShiftCodes, shiftCodes);
+          chosenCode = bestCodeByTarget("onsite", emp.allowedShiftCodes, shiftCodes, dailyTarget);
         }
       }
+
+      const assignedHours = hoursForCode(chosenCode, shiftCodes);
 
       if (isOnsiteCode(chosenCode, shiftCodes)) {
         onsiteCountByDate[dateStr].add(emp.id);
@@ -355,7 +370,9 @@ export function generatePlanning(params: {
         homeworkCountThisMonth[emp.id] = (homeworkCountThisMonth[emp.id] ?? 0) + 1;
       }
 
-      plannedHoursByEmployee[emp.id] = (plannedHoursByEmployee[emp.id] ?? 0) + hoursForCode(chosenCode, shiftCodes);
+      plannedHoursByEmployee[emp.id] = (plannedHoursByEmployee[emp.id] ?? 0) + assignedHours;
+      remainingHours[emp.id] = (remainingHours[emp.id] ?? 0) - assignedHours;
+      remainingShiftDays[emp.id] = Math.max(0, (remainingShiftDays[emp.id] ?? 0) - 1);
 
       entries.push({
         employeeId: emp.id,

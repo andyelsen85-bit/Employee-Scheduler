@@ -16,11 +16,11 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useState } from "react";
-import { Plus, Pencil, Trash2, Building2, Users } from "lucide-react";
+import { Plus, Pencil, Trash2, Building2, Users, KeyRound } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 type OfficeForm = { name: string; deskCount: number };
@@ -133,6 +133,9 @@ export default function OfficesConfig() {
     setSelectedEmployees(s);
   };
 
+  const configuredDesks = (office: { deskAssignments: { deskCode?: string | null }[] }) =>
+    office.deskAssignments.filter((d) => d.deskCode).length;
+
   return (
     <Layout>
       <div className="flex flex-col gap-6">
@@ -158,15 +161,16 @@ export default function OfficesConfig() {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {offices.map((office) => {
               const assignedEmployees = employees?.filter((e) => office.employeeIds.includes(e.id)) ?? [];
+              const configured = configuredDesks(office);
               return (
                 <Card key={office.id}>
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between">
                       <div>
                         <CardTitle className="text-lg">{office.name}</CardTitle>
-                        <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
-                          <Building2 className="h-3.5 w-3.5" />
-                          <span>{office.deskCount} desks</span>
+                        <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
+                          <span className="flex items-center gap-1"><Building2 className="h-3.5 w-3.5" />{office.deskCount} desks</span>
+                          <span className="flex items-center gap-1"><KeyRound className="h-3.5 w-3.5" />{configured}/{assignedEmployees.length} desk codes</span>
                         </div>
                       </div>
                       <div className="flex gap-1">
@@ -182,24 +186,33 @@ export default function OfficesConfig() {
                   <CardContent>
                     <div className="flex items-center gap-1.5 mb-2 text-xs text-muted-foreground font-medium">
                       <Users className="h-3.5 w-3.5" />
-                      {assignedEmployees.length} eligible employees
+                      {assignedEmployees.length} employees
                     </div>
-                    <div className="flex flex-wrap gap-1">
-                      {assignedEmployees.slice(0, 8).map((e) => {
-                        const da = office.deskAssignments.find((d) => d.employeeId === e.id);
-                        return (
-                          <Badge key={e.id} variant="secondary" className="text-xs gap-1">
-                            {e.name.split(" ")[0]}
-                            {da?.deskCode && (
-                              <span className="font-mono text-[10px] bg-background/50 px-1 rounded">{da.deskCode}</span>
-                            )}
-                          </Badge>
-                        );
-                      })}
-                      {assignedEmployees.length > 8 && (
-                        <Badge variant="outline" className="text-xs">+{assignedEmployees.length - 8} more</Badge>
-                      )}
-                    </div>
+                    {assignedEmployees.length > 0 ? (
+                      <div className="space-y-1">
+                        {assignedEmployees.slice(0, 6).map((e) => {
+                          const da = office.deskAssignments.find((d) => d.employeeId === e.id);
+                          return (
+                            <div key={e.id} className="flex items-center justify-between text-xs">
+                              <span className="text-muted-foreground truncate">{e.name}</span>
+                              {da?.deskCode
+                                ? <Badge variant="outline" className="font-mono text-[10px] h-4 px-1">{da.deskCode}</Badge>
+                                : <span className="text-[10px] text-muted-foreground/50 italic">no desk code</span>
+                              }
+                            </div>
+                          );
+                        })}
+                        {assignedEmployees.length > 6 && (
+                          <div className="text-xs text-muted-foreground">+{assignedEmployees.length - 6} more</div>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground/50 italic">No employees assigned</p>
+                    )}
+                    <Button variant="outline" size="sm" className="w-full mt-3 h-7 text-xs" onClick={() => openEdit(office)}>
+                      <KeyRound className="h-3 w-3 mr-1" />
+                      Edit employees & desk codes
+                    </Button>
                   </CardContent>
                 </Card>
               );
@@ -208,52 +221,77 @@ export default function OfficesConfig() {
         )}
 
         <Dialog open={!!dialog} onOpenChange={(open) => !open && setDialog(null)}>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="max-w-xl">
             <DialogHeader>
               <DialogTitle>{dialog === "create" ? "Add Office" : "Edit Office"}</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4 py-2">
-              <div className="space-y-1.5">
-                <Label>Office Name</Label>
-                <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <div className="space-y-5 py-2">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label>Office Name</Label>
+                  <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Total Desks</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={form.deskCount}
+                    onChange={(e) => setForm({ ...form, deskCount: parseInt(e.target.value) })}
+                  />
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <Label>Number of Desks</Label>
-                <Input
-                  type="number"
-                  min="1"
-                  value={form.deskCount}
-                  onChange={(e) => setForm({ ...form, deskCount: parseInt(e.target.value) })}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Eligible Employees & Desk Codes</Label>
-                <ScrollArea className="h-56 border rounded-lg">
-                  <div className="p-3 space-y-2">
-                    {employees?.map((emp) => (
-                      <div key={emp.id} className="flex items-center gap-2">
-                        <Checkbox
-                          id={`emp-${emp.id}`}
-                          checked={selectedEmployees.has(emp.id)}
-                          onCheckedChange={() => toggleEmployee(emp.id)}
-                        />
-                        <label htmlFor={`emp-${emp.id}`} className="text-sm cursor-pointer flex-1 min-w-0">
-                          {emp.name}
-                          <span className="text-muted-foreground ml-2 text-xs">{emp.country.toUpperCase()}</span>
-                        </label>
-                        {selectedEmployees.has(emp.id) && (
-                          <Input
-                            className="h-6 w-20 text-xs font-mono px-2"
-                            placeholder="Desk code"
-                            value={deskCodes[emp.id] ?? ""}
-                            onChange={(e) => setDeskCodes({ ...deskCodes, [emp.id]: e.target.value })}
-                          />
-                        )}
-                      </div>
-                    ))}
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Employee & Desk Code Assignments</Label>
+                  <span className="text-xs text-muted-foreground">{selectedEmployees.size} assigned</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Check employees eligible for this office, then enter their personal desk code (shown in the planning grid).
+                </p>
+                <div className="border rounded-lg overflow-hidden">
+                  <div className="grid grid-cols-[1fr_auto] gap-0 bg-muted/50 border-b px-3 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    <span>Employee</span>
+                    <span className="w-28 text-center">Desk Code</span>
                   </div>
-                </ScrollArea>
-                <p className="text-xs text-muted-foreground">{selectedEmployees.size} selected</p>
+                  <ScrollArea className="h-56">
+                    <div className="divide-y">
+                      {employees?.map((emp) => {
+                        const isSelected = selectedEmployees.has(emp.id);
+                        return (
+                          <div
+                            key={emp.id}
+                            className={`grid grid-cols-[1fr_auto] items-center gap-2 px-3 py-2 transition-colors ${isSelected ? "bg-primary/5" : "hover:bg-muted/30"}`}
+                          >
+                            <label htmlFor={`emp-${emp.id}`} className="flex items-center gap-2 cursor-pointer min-w-0">
+                              <Checkbox
+                                id={`emp-${emp.id}`}
+                                checked={isSelected}
+                                onCheckedChange={() => toggleEmployee(emp.id)}
+                              />
+                              <span className="text-sm truncate">{emp.name}</span>
+                              <span className="text-xs text-muted-foreground shrink-0">{emp.country.toUpperCase()}</span>
+                            </label>
+                            <div className="w-28 flex justify-end">
+                              {isSelected ? (
+                                <Input
+                                  className="h-7 w-24 text-xs font-mono px-2 text-center"
+                                  placeholder="e.g. A-01"
+                                  value={deskCodes[emp.id] ?? ""}
+                                  onChange={(e) => setDeskCodes({ ...deskCodes, [emp.id]: e.target.value })}
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                              ) : (
+                                <span className="text-[11px] text-muted-foreground/40 w-24 text-center">—</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </ScrollArea>
+                </div>
               </div>
             </div>
             <DialogFooter>
