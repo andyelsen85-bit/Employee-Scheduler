@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import {
   db,
   employeesTable,
@@ -193,10 +193,45 @@ router.post("/planning/:year/:month/confirm", async (req, res): Promise<void> =>
   }
   const { year, month } = params.data;
   const pm = await getOrCreateMonth(year, month);
+
   await db
     .update(planningMonthsTable)
     .set({ status: "confirmed", confirmedAt: new Date() })
     .where(eq(planningMonthsTable.id, pm.id));
+
+  const mc = await db
+    .select()
+    .from(monthlyConfigsTable)
+    .where(and(eq(monthlyConfigsTable.year, year), eq(monthlyConfigsTable.month, month)));
+
+  if (mc.length > 0) {
+    const contractualHours = mc[0].contractualHours;
+    const entries = await db
+      .select()
+      .from(planningEntriesTable)
+      .where(eq(planningEntriesTable.planningMonthId, pm.id));
+    const shiftCodeRows = await db.select().from(shiftCodesTable);
+    const shiftHoursMap = new Map(shiftCodeRows.map((sc) => [sc.code, sc.hours]));
+
+    const plannedByEmployee: Record<number, number> = {};
+    for (const entry of entries) {
+      if (!entry.shiftCode) continue;
+      const hours = shiftHoursMap.get(entry.shiftCode) ?? 0;
+      plannedByEmployee[entry.employeeId] = (plannedByEmployee[entry.employeeId] ?? 0) + hours;
+    }
+
+    for (const [empIdStr, planned] of Object.entries(plannedByEmployee)) {
+      const empId = Number(empIdStr);
+      const diff = planned - contractualHours;
+      if (diff !== 0) {
+        await db
+          .update(employeesTable)
+          .set({ prmCounter: sql`${employeesTable.prmCounter} + ${diff}` })
+          .where(eq(employeesTable.id, empId));
+      }
+    }
+  }
+
   res.json(await buildMonthResponse(year, month));
 });
 

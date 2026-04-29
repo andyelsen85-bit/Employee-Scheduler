@@ -227,6 +227,14 @@ export const ListOfficesResponseItem = zod.object({
   employeeIds: zod
     .array(zod.number())
     .describe("Employees eligible to use this office"),
+  deskAssignments: zod
+    .array(
+      zod.object({
+        employeeId: zod.number(),
+        deskCode: zod.string().nullish(),
+      }),
+    )
+    .describe("Desk code assignments per employee"),
 });
 export const ListOfficesResponse = zod.array(ListOfficesResponseItem);
 
@@ -255,6 +263,14 @@ export const UpdateOfficeResponse = zod.object({
   employeeIds: zod
     .array(zod.number())
     .describe("Employees eligible to use this office"),
+  deskAssignments: zod
+    .array(
+      zod.object({
+        employeeId: zod.number(),
+        deskCode: zod.string().nullish(),
+      }),
+    )
+    .describe("Desk code assignments per employee"),
 });
 
 export const DeleteOfficeParams = zod.object({
@@ -269,7 +285,12 @@ export const UpdateOfficeEmployeesParams = zod.object({
 });
 
 export const UpdateOfficeEmployeesBody = zod.object({
-  employeeIds: zod.array(zod.number()),
+  assignments: zod.array(
+    zod.object({
+      employeeId: zod.number(),
+      deskCode: zod.string().nullish(),
+    }),
+  ),
 });
 
 export const UpdateOfficeEmployeesResponse = zod.object({
@@ -279,6 +300,14 @@ export const UpdateOfficeEmployeesResponse = zod.object({
   employeeIds: zod
     .array(zod.number())
     .describe("Employees eligible to use this office"),
+  deskAssignments: zod
+    .array(
+      zod.object({
+        employeeId: zod.number(),
+        deskCode: zod.string().nullish(),
+      }),
+    )
+    .describe("Desk code assignments per employee"),
 });
 
 /**

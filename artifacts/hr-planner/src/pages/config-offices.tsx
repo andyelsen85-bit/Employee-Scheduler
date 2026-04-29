@@ -31,6 +31,7 @@ export default function OfficesConfig() {
   const [dialog, setDialog] = useState<null | "create" | number>(null);
   const [form, setForm] = useState<OfficeForm>({ name: "", deskCount: 10 });
   const [selectedEmployees, setSelectedEmployees] = useState<Set<number>>(new Set());
+  const [deskCodes, setDeskCodes] = useState<Record<number, string>>({});
 
   const { data: offices, isLoading } = useListOffices({
     query: { queryKey: getListOfficesQueryKey() },
@@ -47,32 +48,57 @@ export default function OfficesConfig() {
   const openCreate = () => {
     setForm({ name: "", deskCount: 10 });
     setSelectedEmployees(new Set());
+    setDeskCodes({});
     setDialog("create");
   };
 
-  const openEdit = (office: { id: number; name: string; deskCount: number; employeeIds: number[] }) => {
+  const openEdit = (office: { id: number; name: string; deskCount: number; employeeIds: number[]; deskAssignments: { employeeId: number; deskCode?: string | null }[] }) => {
     setForm({ name: office.name, deskCount: office.deskCount });
     setSelectedEmployees(new Set(office.employeeIds));
+    const codes: Record<number, string> = {};
+    for (const da of office.deskAssignments) {
+      if (da.deskCode) codes[da.employeeId] = da.deskCode;
+    }
+    setDeskCodes(codes);
     setDialog(office.id);
   };
 
+  const buildAssignments = () =>
+    [...selectedEmployees].map((eid) => ({
+      employeeId: eid,
+      deskCode: deskCodes[eid] || null,
+    }));
+
   const handleSave = () => {
-    const employeeIds = [...selectedEmployees];
+    const assignments = buildAssignments();
     if (dialog === "create") {
       createOffice.mutate(
-        { data: { name: form.name, deskCount: form.deskCount, employeeIds } },
+        { data: { name: form.name, deskCount: form.deskCount, employeeIds: assignments.map((a) => a.employeeId) } },
         {
-          onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: getListOfficesQueryKey() });
-            setDialog(null);
-            toast({ title: "Office created" });
+          onSuccess: (office) => {
+            if (assignments.length > 0) {
+              updateOfficeEmployees.mutate(
+                { id: office.id, data: { assignments } },
+                {
+                  onSuccess: () => {
+                    queryClient.invalidateQueries({ queryKey: getListOfficesQueryKey() });
+                    setDialog(null);
+                    toast({ title: "Office created" });
+                  },
+                }
+              );
+            } else {
+              queryClient.invalidateQueries({ queryKey: getListOfficesQueryKey() });
+              setDialog(null);
+              toast({ title: "Office created" });
+            }
           },
         }
       );
     } else if (typeof dialog === "number") {
       Promise.all([
         updateOffice.mutateAsync({ id: dialog, data: { name: form.name, deskCount: form.deskCount } }),
-        updateOfficeEmployees.mutateAsync({ id: dialog, data: { employeeIds } }),
+        updateOfficeEmployees.mutateAsync({ id: dialog, data: { assignments } }),
       ]).then(() => {
         queryClient.invalidateQueries({ queryKey: getListOfficesQueryKey() });
         setDialog(null);
@@ -96,8 +122,14 @@ export default function OfficesConfig() {
 
   const toggleEmployee = (id: number) => {
     const s = new Set(selectedEmployees);
-    if (s.has(id)) s.delete(id);
-    else s.add(id);
+    if (s.has(id)) {
+      s.delete(id);
+      const codes = { ...deskCodes };
+      delete codes[id];
+      setDeskCodes(codes);
+    } else {
+      s.add(id);
+    }
     setSelectedEmployees(s);
   };
 
@@ -153,9 +185,17 @@ export default function OfficesConfig() {
                       {assignedEmployees.length} eligible employees
                     </div>
                     <div className="flex flex-wrap gap-1">
-                      {assignedEmployees.slice(0, 8).map((e) => (
-                        <Badge key={e.id} variant="secondary" className="text-xs">{e.name.split(" ")[0]}</Badge>
-                      ))}
+                      {assignedEmployees.slice(0, 8).map((e) => {
+                        const da = office.deskAssignments.find((d) => d.employeeId === e.id);
+                        return (
+                          <Badge key={e.id} variant="secondary" className="text-xs gap-1">
+                            {e.name.split(" ")[0]}
+                            {da?.deskCode && (
+                              <span className="font-mono text-[10px] bg-background/50 px-1 rounded">{da.deskCode}</span>
+                            )}
+                          </Badge>
+                        );
+                      })}
                       {assignedEmployees.length > 8 && (
                         <Badge variant="outline" className="text-xs">+{assignedEmployees.length - 8} more</Badge>
                       )}
@@ -187,8 +227,8 @@ export default function OfficesConfig() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>Eligible Employees</Label>
-                <ScrollArea className="h-48 border rounded-lg">
+                <Label>Eligible Employees & Desk Codes</Label>
+                <ScrollArea className="h-56 border rounded-lg">
                   <div className="p-3 space-y-2">
                     {employees?.map((emp) => (
                       <div key={emp.id} className="flex items-center gap-2">
@@ -197,10 +237,18 @@ export default function OfficesConfig() {
                           checked={selectedEmployees.has(emp.id)}
                           onCheckedChange={() => toggleEmployee(emp.id)}
                         />
-                        <label htmlFor={`emp-${emp.id}`} className="text-sm cursor-pointer flex-1">
+                        <label htmlFor={`emp-${emp.id}`} className="text-sm cursor-pointer flex-1 min-w-0">
                           {emp.name}
                           <span className="text-muted-foreground ml-2 text-xs">{emp.country.toUpperCase()}</span>
                         </label>
+                        {selectedEmployees.has(emp.id) && (
+                          <Input
+                            className="h-6 w-20 text-xs font-mono px-2"
+                            placeholder="Desk code"
+                            value={deskCodes[emp.id] ?? ""}
+                            onChange={(e) => setDeskCodes({ ...deskCodes, [emp.id]: e.target.value })}
+                          />
+                        )}
                       </div>
                     ))}
                   </div>

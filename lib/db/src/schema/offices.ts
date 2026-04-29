@@ -14,6 +14,7 @@ export const officesTable = pgTable("offices", {
 export const officeEmployeesTable = pgTable("office_employees", {
   officeId: integer("office_id").notNull(),
   employeeId: integer("employee_id").notNull(),
+  deskCode: text("desk_code"),
 });
 
 export const insertOfficeSchema = createInsertSchema(officesTable).omit({

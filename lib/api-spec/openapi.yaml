@@ -226,13 +226,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                employeeIds:
-                  type: array
-                  items:
-                    type: integer
-              required: [employeeIds]
+              $ref: "#/components/schemas/UpdateOfficeEmployeesBody"
       responses:
         "200":
           description: OK
@@ -837,6 +831,16 @@ components:
           type: integer
 
     # OFFICE
+    DeskAssignment:
+      type: object
+      properties:
+        employeeId:
+          type: integer
+        deskCode:
+          type: string
+          nullable: true
+      required: [employeeId]
+
     Office:
       type: object
       properties:
@@ -851,7 +855,21 @@ components:
           items:
             type: integer
           description: "Employees eligible to use this office"
-      required: [id, name, deskCount, employeeIds]
+        deskAssignments:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeskAssignment"
+          description: "Desk code assignments per employee"
+      required: [id, name, deskCount, employeeIds, deskAssignments]
+
+    UpdateOfficeEmployeesBody:
+      type: object
+      properties:
+        assignments:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeskAssignment"
+      required: [assignments]
 
     CreateOfficeBody:
       type: object

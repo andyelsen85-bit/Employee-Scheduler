@@ -273,16 +273,6 @@ export function generatePlanning(params: {
       }
 
       if (isPublicHoliday) {
-        entries.push({
-          employeeId: emp.id,
-          date: dateStr,
-          shiftCode: "C0",
-          isPermanence: false,
-          permanenceLevel: null,
-          isLocked: true,
-          requestedOff: false,
-        });
-        plannedHoursByEmployee[emp.id] = (plannedHoursByEmployee[emp.id] ?? 0) + HOLIDAY_HOURS;
         continue;
       }
 

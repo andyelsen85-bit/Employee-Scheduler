@@ -16,10 +16,17 @@ async function getOfficesWithEmployees() {
   const offices = await db.select().from(officesTable).orderBy(officesTable.name);
   const assignments = await db.select().from(officeEmployeesTable);
 
-  return offices.map((o) => ({
-    ...o,
-    employeeIds: assignments.filter((a) => a.officeId === o.id).map((a) => a.employeeId),
-  }));
+  return offices.map((o) => {
+    const officeAssignments = assignments.filter((a) => a.officeId === o.id);
+    return {
+      ...o,
+      employeeIds: officeAssignments.map((a) => a.employeeId),
+      deskAssignments: officeAssignments.map((a) => ({
+        employeeId: a.employeeId,
+        deskCode: a.deskCode ?? null,
+      })),
+    };
+  });
 }
 
 router.get("/offices", async (_req, res): Promise<void> => {
@@ -43,7 +50,11 @@ router.post("/offices", async (req, res): Promise<void> => {
     );
   }
 
-  res.status(201).json({ ...office, employeeIds: parsed.data.employeeIds ?? [] });
+  res.status(201).json({
+    ...office,
+    employeeIds: parsed.data.employeeIds ?? [],
+    deskAssignments: (parsed.data.employeeIds ?? []).map((eid) => ({ employeeId: eid, deskCode: null })),
+  });
 });
 
 router.put("/offices/:id", async (req, res): Promise<void> => {
@@ -70,11 +81,15 @@ router.put("/offices/:id", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Office not found" });
     return;
   }
-  const assignments = await db
+  const oeRows = await db
     .select()
     .from(officeEmployeesTable)
     .where(eq(officeEmployeesTable.officeId, office.id));
-  res.json({ ...office, employeeIds: assignments.map((a) => a.employeeId) });
+  res.json({
+    ...office,
+    employeeIds: oeRows.map((a) => a.employeeId),
+    deskAssignments: oeRows.map((a) => ({ employeeId: a.employeeId, deskCode: a.deskCode ?? null })),
+  });
 });
 
 router.delete("/offices/:id", async (req, res): Promise<void> => {
@@ -107,9 +122,14 @@ router.put("/offices/:id/employees", async (req, res): Promise<void> => {
     return;
   }
   await db.delete(officeEmployeesTable).where(eq(officeEmployeesTable.officeId, params.data.id));
-  if (parsed.data.employeeIds.length > 0) {
+  const assignments = parsed.data.assignments;
+  if (assignments.length > 0) {
     await db.insert(officeEmployeesTable).values(
-      parsed.data.employeeIds.map((eid) => ({ officeId: params.data.id, employeeId: eid }))
+      assignments.map((a) => ({
+        officeId: params.data.id,
+        employeeId: a.employeeId,
+        deskCode: a.deskCode ?? null,
+      }))
     );
   }
   const [office] = await db.select().from(officesTable).where(eq(officesTable.id, params.data.id));
@@ -117,7 +137,11 @@ router.put("/offices/:id/employees", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Office not found" });
     return;
   }
-  res.json({ ...office, employeeIds: parsed.data.employeeIds });
+  res.json({
+    ...office,
+    employeeIds: assignments.map((a) => a.employeeId),
+    deskAssignments: assignments.map((a) => ({ employeeId: a.employeeId, deskCode: a.deskCode ?? null })),
+  });
 });
 
 export default router;

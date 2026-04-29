@@ -81,12 +81,23 @@ export interface UpdateCountersBody {
   homeworkDaysUsedThisYear?: number;
 }
 
+export interface DeskAssignment {
+  employeeId: number;
+  deskCode?: string | null;
+}
+
 export interface Office {
   id: number;
   name: string;
   deskCount: number;
   /** Employees eligible to use this office */
   employeeIds: number[];
+  /** Desk code assignments per employee */
+  deskAssignments: DeskAssignment[];
+}
+
+export interface UpdateOfficeEmployeesBody {
+  assignments: DeskAssignment[];
 }
 
 export interface CreateOfficeBody {
@@ -263,10 +274,6 @@ export interface DashboardSummary {
   permanenceSchedule: PermanenceWeek[];
   totalViolations: number;
 }
-
-export type UpdateOfficeEmployeesBody = {
-  employeeIds: number[];
-};
 
 export type ListHolidaysParams = {
   year?: number;

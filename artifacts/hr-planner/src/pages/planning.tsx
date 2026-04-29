@@ -1,6 +1,6 @@
 import { Layout } from "@/components/layout";
 import { useParams, Link } from "wouter";
-import { useGetMonthPlanning, getGetMonthPlanningQueryKey, useListEmployees, getListEmployeesQueryKey, useListShiftCodes, getListShiftCodesQueryKey, useGeneratePlanning, useConfirmPlanning, useUpdatePlanningEntry, useGetMonthlyConfig, getGetMonthlyConfigQueryKey } from "@workspace/api-client-react";
+import { useGetMonthPlanning, getGetMonthPlanningQueryKey, useListEmployees, getListEmployeesQueryKey, useListShiftCodes, getListShiftCodesQueryKey, useGeneratePlanning, useConfirmPlanning, useUpdatePlanningEntry, useGetMonthlyConfig, getGetMonthlyConfigQueryKey, useListOffices, getListOfficesQueryKey } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Download, CheckCircle, Wand2, AlertCircle } from "lucide-react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend } from "date-fns";
@@ -32,6 +32,17 @@ export default function Planning() {
   const { data: monthlyConfig } = useGetMonthlyConfig(year, month, {
     query: { queryKey: getGetMonthlyConfigQueryKey(year, month) }
   });
+
+  const { data: offices } = useListOffices({
+    query: { queryKey: getListOfficesQueryKey() }
+  });
+
+  const deskByEmployee = new Map<number, string>();
+  for (const office of offices ?? []) {
+    for (const da of office.deskAssignments) {
+      if (da.deskCode) deskByEmployee.set(da.employeeId, da.deskCode);
+    }
+  }
 
   const generatePlanning = useGeneratePlanning();
   const confirmPlanning = useConfirmPlanning();
@@ -245,6 +256,9 @@ export default function Planning() {
                                   <PopoverTrigger asChild>
                                     <button className={`px-2 py-1 text-xs font-semibold rounded w-full border border-transparent hover:border-border transition-colors ${hasViolation ? 'text-destructive ring-1 ring-destructive' : 'bg-primary/10 text-primary'}`}>
                                       {entry.shiftCode}
+                                      {deskByEmployee.has(emp.id) && (
+                                        <div className="text-[9px] font-mono text-muted-foreground leading-tight mt-0.5">{deskByEmployee.get(emp.id)}</div>
+                                      )}
                                     </button>
                                   </PopoverTrigger>
                                   <PopoverContent className="w-48 p-2" side="bottom">
