@@ -526,13 +526,16 @@ export function generatePlanning(params: {
   }
 
   // ── PHASE 2: Day-by-day assignment ────────────────────────────────────────
-  // Track desk pool per ISO-week per office so employees keep the same desk all week
+  // Track desk pool per ISO-week per office — only for employees onsite the whole week.
   const allWeekKeys = [...new Set(allDays.map(getWeekNumber))];
   const deskUsedByWeekByOffice: Record<string, Record<number, Set<string>>> = {};
   for (const wk of allWeekKeys) {
     deskUsedByWeekByOffice[wk] = {};
     for (const o of offices) deskUsedByWeekByOffice[wk][o.id] = new Set();
   }
+  // Per-day desk pool for partial-week onsite employees (day-pref override within a homework/cowork week).
+  // These desks are only blocked for that specific day — not the whole week.
+  const deskUsedByDateByOffice: Record<string, Record<number, Set<string>>> = {};
   // Per-employee per-week desk assignment (undefined = not yet assigned this week)
   const weeklyDeskByEmp: Record<number, Record<string, string | null>> = {};
   for (const e of employees) weeklyDeskByEmp[e.id] = {};
@@ -736,60 +739,80 @@ export function generatePlanning(params: {
       let assignedDeskCode: string | null = null;
       let deskAvailableFromPool = false;
 
+      // Desk assignment strategy depends on the week type:
+      //   • Onsite week  → same desk all week, blocked in weekly pool (current behaviour).
+      //   • Homework/cowork week with an onsite day-pref override today
+      //                  → pick desk from daily pool for today only; desk freed tomorrow.
+      //   • Homework/cowork week, today remote → no desk reserved.
+      // `preferredType` is already resolved (day-pref overrides applied above).
+      const weekTypeInitial = empDayTypeMap[emp.id]?.[dateStr] ?? "onsite";
+      const isFullOnsiteWeek = weekTypeInitial === "onsite";
+
+      // Helper: pick a desk from an available list respecting HA preference
+      const pickDesk = (available: string[], haDesks: string[]): string => {
+        if (emp.prefersHeightAdjustableDesk) {
+          const ha = available.filter((dc) => haDesks.includes(dc));
+          const pool = ha.length > 0 ? ha : available;
+          return pool[Math.floor(Math.random() * pool.length)];
+        }
+        const nonHa = available.filter((dc) => !haDesks.includes(dc));
+        const pool = nonHa.length > 0 ? nonHa : available;
+        return pool[Math.floor(Math.random() * pool.length)];
+      };
+
       if (empOffices.length > 0) {
-        // Check if employee already has a desk reserved for this week
-        const existingWeekDesk = weeklyDeskByEmp[emp.id]?.[weekStart];
-        if (existingWeekDesk !== undefined) {
-          // Reuse same desk for consistency across the week
-          assignedDeskCode = existingWeekDesk;
-          deskAvailableFromPool = assignedDeskCode !== null;
-        } else {
-          // Only reserve a desk if the week type is onsite (or a day preference might override to onsite).
-          // Cowork weeks: the employee goes to an external coworking space — no office desk needed.
-          // This keeps the desk pool free for other employees that week.
-          const weekTypeInitial = empDayTypeMap[emp.id]?.[dateStr] ?? "onsite";
-          const hasOnsiteDayPrefToday = (emp.dayCodePreferences ?? []).some(
-            (p) => p.day === dayOfWeek && emp.allowedShiftCodes.includes(p.code) && shiftCodes[p.code]?.type === "onsite"
-          );
-          const shouldReserveDesk = weekTypeInitial !== "cowork" || hasOnsiteDayPrefToday;
-          if (!shouldReserveDesk) {
-            weeklyDeskByEmp[emp.id][weekStart] = null; // mark as "no desk this week" so we don't re-evaluate later
+        if (isFullOnsiteWeek) {
+          // ── Full-week onsite: same desk all week (weekly pool) ──────────────
+          const existingWeekDesk = weeklyDeskByEmp[emp.id]?.[weekStart];
+          if (existingWeekDesk !== undefined) {
+            assignedDeskCode = existingWeekDesk;
+            deskAvailableFromPool = assignedDeskCode !== null;
+          } else {
+            for (const office of empOffices) {
+              const weekUsed = deskUsedByWeekByOffice[weekStart]?.[office.id] ?? new Set();
+              const allAvailable = office.deskCodes.filter((dc) => !weekUsed.has(dc));
+              if (allAvailable.length > 0) {
+                deskAvailableFromPool = true;
+                assignedDeskCode = pickDesk(allAvailable, office.heightAdjustableDesks ?? []);
+                (deskUsedByWeekByOffice[weekStart] ??= {})[office.id] ??= new Set();
+                deskUsedByWeekByOffice[weekStart][office.id].add(assignedDeskCode);
+                weeklyDeskByEmp[emp.id][weekStart] = assignedDeskCode;
+                break;
+              }
+            }
+            if (!deskAvailableFromPool) {
+              weeklyDeskByEmp[emp.id][weekStart] = null;
+            }
           }
-          if (shouldReserveDesk)
-          // First potential onsite day this week — pick from weekly pool
+        } else if (preferredType === "onsite") {
+          // ── Partial-week: onsite today only (day-pref override) ─────────────
+          // Don't block the desk for the whole week — pick from the daily pool.
+          // Desks already taken by full-week-onsite colleagues (weekly pool) are excluded.
           for (const office of empOffices) {
             const weekUsed = deskUsedByWeekByOffice[weekStart]?.[office.id] ?? new Set();
-            const allAvailable = office.deskCodes.filter((dc) => !weekUsed.has(dc));
+            const dayUsed = (deskUsedByDateByOffice[dateStr] ??= {})[office.id] ?? new Set();
+            const allAvailable = office.deskCodes.filter((dc) => !weekUsed.has(dc) && !dayUsed.has(dc));
             if (allAvailable.length > 0) {
               deskAvailableFromPool = true;
-              const haDesks = office.heightAdjustableDesks ?? [];
-              if (emp.prefersHeightAdjustableDesk) {
-                // HA-preferring employees: pick from HA pool first, fall back to all
-                const haDeskPool = allAvailable.filter((dc) => haDesks.includes(dc));
-                const candidatePool = haDeskPool.length > 0 ? haDeskPool : allAvailable;
-                assignedDeskCode = candidatePool[Math.floor(Math.random() * candidatePool.length)];
-              } else {
-                // Non-HA employees: prefer non-HA desks to leave HA desks for those who need them.
-                // Only fall back to HA desks when no standard desks remain.
-                const nonHaDeskPool = allAvailable.filter((dc) => !haDesks.includes(dc));
-                const candidatePool = nonHaDeskPool.length > 0 ? nonHaDeskPool : allAvailable;
-                assignedDeskCode = candidatePool[Math.floor(Math.random() * candidatePool.length)];
-              }
-              // Reserve desk for the whole week immediately
-              (deskUsedByWeekByOffice[weekStart] ??= {})[office.id] ??= new Set();
-              deskUsedByWeekByOffice[weekStart][office.id].add(assignedDeskCode);
-              weeklyDeskByEmp[emp.id][weekStart] = assignedDeskCode;
+              assignedDeskCode = pickDesk(allAvailable, office.heightAdjustableDesks ?? []);
+              (deskUsedByDateByOffice[dateStr] ??= {})[office.id] ??= new Set();
+              deskUsedByDateByOffice[dateStr][office.id].add(assignedDeskCode);
               break;
             }
           }
-          if (!deskAvailableFromPool) {
-            // No individual desk available — mark this week as "no desk"
+          // No weekly-pool entry for partial-week employees — each onsite day is independent.
+          if (weeklyDeskByEmp[emp.id]?.[weekStart] === undefined) {
+            weeklyDeskByEmp[emp.id][weekStart] = null;
+          }
+        } else {
+          // Remote day (homework / cowork) — no desk needed
+          if (weeklyDeskByEmp[emp.id]?.[weekStart] === undefined) {
             weeklyDeskByEmp[emp.id][weekStart] = null;
           }
         }
       }
 
-      // If employee has no office or no desk, they cannot go onsite
+      // If employee has no office or no desk available for today, they cannot go onsite
       const canGoOnsite = empOffices.length > 0 && deskAvailableFromPool;
 
       const homeworkUsedSoFar = (emp.homeworkDaysUsedThisYear ?? 0) + (homeworkCountThisMonth[emp.id] ?? 0);
@@ -882,60 +905,85 @@ export function generatePlanning(params: {
     }
   }
 
-  // ── PHASE 3: Second pass — promote homework to onsite where desks are free ──
-  // For each employee-week where a desk was reserved in Phase 2 but the week type was
-  // homework, upgrade those days to onsite to maximise office utilisation.
-  // Cowork entries are intentional (employee goes to external site) and are never touched.
-  // Days with an explicit homework day-code preference are also left unchanged (user intent).
+  // ── PHASE 3: Second pass — promote homework to onsite where a desk is free ──
+  // For each homework entry, if a desk is available in the daily pool (not taken by a
+  // full-week onsite employee or another partial-week employee already assigned today),
+  // upgrade the entry to onsite. Cowork is never touched. Days with an explicit homework
+  // day-code preference are also left unchanged (user intent).
   for (const emp of employees) {
     if (!emp.allowedShiftCodes.some((c) => shiftCodes[c]?.type === "onsite")) continue;
 
     const shiftDaysForEmp = empShiftDays[emp.id] ?? [];
-    const weekKeysForEmp = [...new Set(shiftDaysForEmp.map(getWeekNumber))];
     const empTarget = empContractualHours[emp.id];
     const dailyTarget = shiftDaysForEmp.length > 0 ? empTarget / shiftDaysForEmp.length : 8;
     const onsiteCode = bestCodeByTarget("onsite", emp.allowedShiftCodes, shiftCodes, dailyTarget);
     if (!onsiteCode) continue;
 
-    for (const wk of weekKeysForEmp) {
-      const reservedDesk = weeklyDeskByEmp[emp.id]?.[wk];
-      if (!reservedDesk) continue; // No desk reserved for this week — cannot go onsite
+    const empOfficesFull = offices.filter((o) => o.employeeIds.includes(emp.id));
 
-      // Upgrade all non-locked, non-preferred homework/cowork entries in this week
-      for (const entry of entries) {
-        if (entry.employeeId !== emp.id || entry.isLocked || entry.requestedOff) continue;
-        if (getWeekNumber(entry.date) !== wk) continue;
-        if (!entry.shiftCode) continue;
+    for (const entry of entries) {
+      if (entry.employeeId !== emp.id || entry.isLocked || entry.requestedOff) continue;
+      if (!entry.shiftCode) continue;
 
-        const currentType = shiftCodes[entry.shiftCode]?.type;
-        // Only promote homework → onsite. Cowork is intentional (external coworking site):
-        // the employee chose to go there, so we must not silently override it with onsite.
-        if (currentType !== "homework") continue;
+      const currentType = shiftCodes[entry.shiftCode]?.type;
+      // Only promote homework → onsite. Cowork is intentional (external coworking site).
+      if (currentType !== "homework") continue;
 
-        // Respect explicit day preferences: if this weekday has a homework/cowork preference,
-        // leave it as-is (the employee explicitly wants to stay remote that day).
-        const dow = getDayOfWeek0Mon(entry.date);
-        const hasExplicitRemotePref = (emp.dayCodePreferences ?? []).some(
-          (p) =>
-            p.day === dow &&
-            emp.allowedShiftCodes.includes(p.code) &&
-            (shiftCodes[p.code]?.type === "homework" || shiftCodes[p.code]?.type === "cowork")
-        );
-        if (hasExplicitRemotePref) continue;
+      // Respect explicit homework day preferences — don't override the employee's intent.
+      const dow = getDayOfWeek0Mon(entry.date);
+      const hasExplicitRemotePref = (emp.dayCodePreferences ?? []).some(
+        (p) =>
+          p.day === dow &&
+          emp.allowedShiftCodes.includes(p.code) &&
+          (shiftCodes[p.code]?.type === "homework" || shiftCodes[p.code]?.type === "cowork")
+      );
+      if (hasExplicitRemotePref) continue;
 
-        // Upgrade: replace with onsite code and assign the reserved desk
-        const oldHours = hoursForCode(entry.shiftCode, shiftCodes);
-        const newHours = hoursForCode(onsiteCode, shiftCodes);
-        entry.shiftCode = onsiteCode;
-        entry.deskCode = reservedDesk;
+      // Try to find a free desk for this specific day.
+      // Desks taken all week by full-onsite colleagues (weeklyPool) are unavailable;
+      // desks already assigned today by other partial-week employees (dailyPool) are also unavailable.
+      const wk = getWeekNumber(entry.date);
+      const rotationPreferredOfficeId = weeklyPreferredOffice[emp.id]?.[wk];
+      const effectivePreferredOfficeId = emp.preferredOfficeId ?? rotationPreferredOfficeId;
+      const empOfficesOrdered = effectivePreferredOfficeId
+        ? [
+            ...empOfficesFull.filter((o) => o.id === effectivePreferredOfficeId),
+            ...empOfficesFull.filter((o) => o.id !== effectivePreferredOfficeId),
+          ]
+        : empOfficesFull;
 
-        onsiteCountByEmployee[emp.id] = (onsiteCountByEmployee[emp.id] ?? 0) + 1;
-        if (currentType === "homework") {
-          homeworkCountThisMonth[emp.id] = Math.max(0, (homeworkCountThisMonth[emp.id] ?? 0) - 1);
+      let promotedDesk: string | null = null;
+      for (const office of empOfficesOrdered) {
+        const weekUsed = deskUsedByWeekByOffice[wk]?.[office.id] ?? new Set();
+        const dayUsed = (deskUsedByDateByOffice[entry.date] ??= {})[office.id] ?? new Set();
+        const allAvailable = office.deskCodes.filter((dc) => !weekUsed.has(dc) && !dayUsed.has(dc));
+        if (allAvailable.length > 0) {
+          const haDesks = office.heightAdjustableDesks ?? [];
+          if (emp.prefersHeightAdjustableDesk) {
+            const ha = allAvailable.filter((dc) => haDesks.includes(dc));
+            const pool = ha.length > 0 ? ha : allAvailable;
+            promotedDesk = pool[Math.floor(Math.random() * pool.length)];
+          } else {
+            const nonHa = allAvailable.filter((dc) => !haDesks.includes(dc));
+            const pool = nonHa.length > 0 ? nonHa : allAvailable;
+            promotedDesk = pool[Math.floor(Math.random() * pool.length)];
+          }
+          (deskUsedByDateByOffice[entry.date] ??= {})[office.id] ??= new Set();
+          deskUsedByDateByOffice[entry.date][office.id].add(promotedDesk);
+          break;
         }
-        // Update hours tracking for accurate PRM violation reporting
-        plannedHoursByEmployee[emp.id] = (plannedHoursByEmployee[emp.id] ?? 0) + (newHours - oldHours);
       }
+
+      if (!promotedDesk) continue; // No desk available today — leave as homework
+
+      // Upgrade entry to onsite with the daily desk
+      const oldHours = hoursForCode(entry.shiftCode, shiftCodes);
+      const newHours = hoursForCode(onsiteCode, shiftCodes);
+      entry.shiftCode = onsiteCode;
+      entry.deskCode = promotedDesk;
+      onsiteCountByEmployee[emp.id] = (onsiteCountByEmployee[emp.id] ?? 0) + 1;
+      homeworkCountThisMonth[emp.id] = Math.max(0, (homeworkCountThisMonth[emp.id] ?? 0) - 1);
+      plannedHoursByEmployee[emp.id] = (plannedHoursByEmployee[emp.id] ?? 0) + (newHours - oldHours);
     }
   }
 
