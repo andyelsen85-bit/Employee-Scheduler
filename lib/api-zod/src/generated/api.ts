@@ -692,6 +692,66 @@ export const GeneratePlanningResponse = zod.object({
 });
 
 /**
+ * @summary Regenerate planning for a single employee, preserving all other employees' entries
+ */
+export const GenerateEmployeePlanningParams = zod.object({
+  year: zod.coerce.number(),
+  month: zod.coerce.number(),
+  employeeId: zod.coerce.number(),
+});
+
+export const GenerateEmployeePlanningBody = zod.object({
+  requestedDaysOff: zod
+    .array(
+      zod.object({
+        employeeId: zod.number(),
+        dates: zod.array(zod.string()),
+      }),
+    )
+    .describe("Pre-collected employee day-off requests for this month"),
+  overwriteExisting: zod
+    .boolean()
+    .optional()
+    .describe("If true, replace the existing draft entirely"),
+});
+
+export const GenerateEmployeePlanningResponse = zod.object({
+  year: zod.number(),
+  month: zod.number(),
+  status: zod.string().describe("draft | confirmed"),
+  entries: zod.array(
+    zod.object({
+      id: zod.number(),
+      employeeId: zod.number(),
+      date: zod.string(),
+      shiftCode: zod.string().nullish(),
+      deskCode: zod
+        .string()
+        .nullish()
+        .describe("Randomly assigned shared desk for onsite days"),
+      isPermanence: zod.boolean(),
+      permanenceLevel: zod.number().nullish(),
+      isLocked: zod.boolean().describe("True when manually set or confirmed"),
+      requestedOff: zod.boolean(),
+      notes: zod.string().nullish(),
+    }),
+  ),
+  violations: zod.array(
+    zod.object({
+      date: zod.string(),
+      type: zod
+        .string()
+        .describe(
+          "missing_spoc | missing_management | missing_perma1 | missing_perma2 | desk_overflow | prm_exceeded | homework_limit | insufficient_onsite | role_gap",
+        ),
+      message: zod.string(),
+      employeeId: zod.number().nullish(),
+    }),
+  ),
+  generatedAt: zod.coerce.date().nullish(),
+});
+
+/**
  * @summary Confirm the planning for a month and update all counters
  */
 export const ConfirmPlanningParams = zod.object({

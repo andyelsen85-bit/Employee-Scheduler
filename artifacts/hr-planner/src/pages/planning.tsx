@@ -1,8 +1,8 @@
 import { Layout } from "@/components/layout";
 import { useParams, Link } from "wouter";
-import { useGetMonthPlanning, getGetMonthPlanningQueryKey, useListEmployees, getListEmployeesQueryKey, useListShiftCodes, getListShiftCodesQueryKey, useGeneratePlanning, useConfirmPlanning, useUpdatePlanningEntry, useGetMonthlyConfig, getGetMonthlyConfigQueryKey, useListOffices, getListOfficesQueryKey } from "@workspace/api-client-react";
+import { useGetMonthPlanning, getGetMonthPlanningQueryKey, useListEmployees, getListEmployeesQueryKey, useListShiftCodes, getListShiftCodesQueryKey, useGeneratePlanning, useGenerateEmployeePlanning, useConfirmPlanning, useUpdatePlanningEntry, useGetMonthlyConfig, getGetMonthlyConfigQueryKey, useListOffices, getListOfficesQueryKey } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Download, CheckCircle, Wand2, AlertCircle, Trash2, Lock } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, CheckCircle, Wand2, AlertCircle, Trash2, Lock, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -99,7 +99,9 @@ export default function Planning() {
   const generatePlanning = useGeneratePlanning();
   const confirmPlanning = useConfirmPlanning();
   const updateEntry = useUpdatePlanningEntry();
+  const generateEmployeePlanning = useGenerateEmployeePlanning();
   const [isClearing, setIsClearing] = useState(false);
+  const [regeneratingEmployeeId, setRegeneratingEmployeeId] = useState<number | null>(null);
 
   const handleGenerate = () => {
     generatePlanning.mutate({ year, month, data: { requestedDaysOff: [] } }, {
@@ -129,6 +131,26 @@ export default function Planning() {
         toast({ title: "Planning fully regenerated" });
       }
     });
+  };
+
+  const handleRegenerateEmployee = (employeeId: number) => {
+    setRegeneratingEmployeeId(employeeId);
+    generateEmployeePlanning.mutate(
+      { year, month, employeeId, data: { requestedDaysOff: [] } },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetMonthPlanningQueryKey(year, month) });
+          const emp = employees?.find((e) => e.id === employeeId);
+          toast({ title: `${emp?.name ?? "Employee"} planning regenerated` });
+        },
+        onError: () => {
+          toast({ title: "Failed to regenerate employee planning", variant: "destructive" });
+        },
+        onSettled: () => {
+          setRegeneratingEmployeeId(null);
+        },
+      }
+    );
   };
 
   const handleConfirm = () => {
@@ -362,8 +384,18 @@ export default function Planning() {
                     const under = diff !== null && diff < 0;
                     return (
                       <tr key={emp.id} className="border-b hover:bg-muted/30 transition-colors">
-                        <td className="px-4 py-2 font-medium sticky left-0 bg-card z-10 border-r shadow-[1px_0_0_0_var(--color-border)] truncate">
-                          {emp.name}
+                        <td className="px-2 py-2 font-medium sticky left-0 bg-card z-10 border-r shadow-[1px_0_0_0_var(--color-border)]">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="truncate">{emp.name}</span>
+                            <button
+                              onClick={() => handleRegenerateEmployee(emp.id)}
+                              disabled={regeneratingEmployeeId !== null}
+                              title={`Regenerate ${emp.name}'s planning`}
+                              className="flex-shrink-0 p-0.5 rounded text-muted-foreground hover:text-primary hover:bg-muted transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              <RefreshCw className={`h-3 w-3 ${regeneratingEmployeeId === emp.id ? "animate-spin" : ""}`} />
+                            </button>
+                          </div>
                         </td>
                         {daysInMonth.map(day => {
                           const dateStr = format(day, "yyyy-MM-dd");

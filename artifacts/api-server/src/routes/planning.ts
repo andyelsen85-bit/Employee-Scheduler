@@ -17,6 +17,7 @@ import {
   GetMonthPlanningParams,
   GeneratePlanningParams,
   GeneratePlanningBody,
+  GenerateEmployeePlanningParams,
   ConfirmPlanningParams,
   UpdatePlanningEntryParams,
   UpdatePlanningEntryBody,
@@ -287,6 +288,154 @@ router.post("/planning/:year/:month/generate", async (req, res): Promise<void> =
   await db
     .update(planningMonthsTable)
     .set({ status: "draft", generatedAt: new Date(), violations: violations as unknown as Record<string, unknown>[] })
+    .where(eq(planningMonthsTable.id, pm.id));
+
+  const result = await buildMonthResponse(year, month);
+  result.violations = violations;
+  res.json(result);
+});
+
+router.post("/planning/:year/:month/generate/employee/:employeeId", async (req, res): Promise<void> => {
+  const params = GenerateEmployeePlanningParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const parsed = GeneratePlanningBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const { year, month, employeeId } = params.data;
+
+  const config = await db
+    .select()
+    .from(monthlyConfigsTable)
+    .where(and(eq(monthlyConfigsTable.year, year), eq(monthlyConfigsTable.month, month)));
+  if (config.length === 0) {
+    res.status(400).json({ error: "Monthly config not found." });
+    return;
+  }
+  const mc = config[0];
+
+  const employees = await db.select().from(employeesTable);
+  const offices = await db.select().from(officesTable);
+  const oeRows = await db.select().from(officeEmployeesTable);
+  const shiftCodeRows = await db.select().from(shiftCodesTable).where(eq(shiftCodesTable.isActive, true));
+  const templates = await db.select().from(weekTemplatesTable);
+  const holidays = await db
+    .select()
+    .from(publicHolidaysTable)
+    .then((rows) => rows.filter((r) => r.date.startsWith(String(year))));
+
+  const shiftCodes: Record<string, { code: string; hours: number; type: string }> = {};
+  for (const sc of shiftCodeRows) shiftCodes[sc.code] = sc;
+
+  const officesWithEmps: import("../lib/planner.js").OfficeRecord[] = offices.map((o) => ({
+    id: o.id,
+    deskCount: o.deskCount,
+    deskCodes: (o.deskCodes as string[]) ?? [],
+    heightAdjustableDesks: (o.heightAdjustableDesks as string[]) ?? [],
+    employeeIds: oeRows.filter((oe) => oe.officeId === o.id).map((oe) => oe.employeeId),
+  }));
+
+  const publicHolidayDates = holidays.filter((h) => h.country === "lu" || h.country === "all").map((h) => h.date);
+
+  const pm = await getOrCreateMonth(year, month);
+  const existingEntries = await db
+    .select()
+    .from(planningEntriesTable)
+    .where(eq(planningEntriesTable.planningMonthId, pm.id));
+
+  // All OTHER employees' entries become locked context — their planning is preserved unchanged.
+  // Only the target employee's non-locked entries are regenerated.
+  const lockedEntries = existingEntries
+    .filter((e) => e.employeeId !== employeeId || e.isLocked)
+    .map((e) => ({
+      employeeId: e.employeeId,
+      date: e.date,
+      shiftCode: e.shiftCode,
+      deskCode: e.deskCode ?? null,
+      isPermanence: e.isPermanence,
+      permanenceLevel: e.permanenceLevel,
+      isLocked: true,
+      requestedOff: e.requestedOff,
+    }));
+
+  const precomputedPermanence = await buildPermanenceAssignments(year, month);
+
+  const { entries, violations } = generatePlanning({
+    year,
+    month,
+    employees: employees.map((e) => ({
+      id: e.id,
+      name: e.name,
+      country: e.country,
+      contractPercent: e.contractPercent,
+      weeklyContractHours: e.weeklyContractHours,
+      homeworkEligible: e.homeworkEligible,
+      coworkEligible: e.coworkEligible,
+      allowedShiftCodes: (e.allowedShiftCodes as string[]) ?? [],
+      permanenceGroup: e.permanenceGroup,
+      permanenceLevel: e.permanenceLevel,
+      isSpoc: e.isSpoc,
+      isManagement: e.isManagement,
+      prmCounter: e.prmCounter,
+      homeworkDaysUsedThisYear: e.homeworkDaysUsedThisYear,
+      dayCodePreferences: Array.isArray(e.dayCodePreferences) ? (e.dayCodePreferences as import("../lib/planner.js").DayCodePreference[]) : [],
+      prefersHeightAdjustableDesk: e.prefersHeightAdjustableDesk ?? false,
+    })),
+    offices: officesWithEmps,
+    shiftCodes,
+    templates: templates.map((t) => ({
+      id: t.id,
+      employeeId: t.employeeId,
+      days: (t.days as Array<{ dayOfWeek: number; shiftCode: string | null }>) ?? [],
+    })),
+    publicHolidayDates,
+    jlDays: mc.jlDays ?? 0,
+    contractualHours: mc.contractualHours,
+    requestedDaysOff: (parsed.data.requestedDaysOff ?? []).map((r) => ({
+      employeeId: r.employeeId,
+      dates: r.dates,
+    })),
+    lockedEntries,
+    permanenceAssignments: precomputedPermanence,
+  });
+
+  // Delete only the target employee's non-locked entries, then insert their new ones
+  await db
+    .delete(planningEntriesTable)
+    .where(
+      and(
+        eq(planningEntriesTable.planningMonthId, pm.id),
+        eq(planningEntriesTable.employeeId, employeeId),
+        ne(planningEntriesTable.isLocked, true)
+      )
+    );
+
+  const newEntries = entries.filter((e) => e.employeeId === employeeId && !e.isLocked);
+  if (newEntries.length > 0) {
+    await db.insert(planningEntriesTable).values(
+      newEntries.map((e) => ({
+        planningMonthId: pm.id,
+        employeeId: e.employeeId,
+        date: e.date,
+        shiftCode: e.shiftCode,
+        deskCode: e.deskCode ?? null,
+        isPermanence: e.isPermanence,
+        permanenceLevel: e.permanenceLevel,
+        isLocked: false,
+        requestedOff: e.requestedOff,
+      }))
+    );
+  }
+
+  // Persist updated violations for the whole month
+  await db
+    .update(planningMonthsTable)
+    .set({ violations: violations as unknown as Record<string, unknown>[] })
     .where(eq(planningMonthsTable.id, pm.id));
 
   const result = await buildMonthResponse(year, month);

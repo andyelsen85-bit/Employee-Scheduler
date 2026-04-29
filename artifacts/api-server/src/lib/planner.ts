@@ -493,6 +493,26 @@ export function generatePlanning(params: {
   const weeklyDeskByEmp: Record<number, Record<string, string | null>> = {};
   for (const e of employees) weeklyDeskByEmp[e.id] = {};
 
+  // Pre-populate desk pool from locked entries so other employees' reserved desks are
+  // respected when regenerating a single employee. Without this, the regen algorithm
+  // might assign a desk that is already occupied by a locked (unchanged) colleague.
+  for (const locked of lockedEntries) {
+    if (!locked.deskCode) continue;
+    const weekStart = getWeekNumber(locked.date);
+    const empOffices = offices.filter((o) => o.employeeIds.includes(locked.employeeId));
+    for (const office of empOffices) {
+      if (office.deskCodes.includes(locked.deskCode)) {
+        (deskUsedByWeekByOffice[weekStart] ??= {})[office.id] ??= new Set();
+        deskUsedByWeekByOffice[weekStart][office.id].add(locked.deskCode);
+        // Only set weeklyDeskByEmp once per employee per week (first locked day encountered)
+        if (weeklyDeskByEmp[locked.employeeId]?.[weekStart] === undefined) {
+          weeklyDeskByEmp[locked.employeeId][weekStart] = locked.deskCode;
+        }
+        break;
+      }
+    }
+  }
+
   // Running balance for hour accuracy
   const remainingHours: Record<number, number> = {};
   const remainingShiftDays: Record<number, number> = {};

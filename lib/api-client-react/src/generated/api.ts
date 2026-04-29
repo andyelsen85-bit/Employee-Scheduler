@@ -2411,6 +2411,134 @@ export const useGeneratePlanning = <
 };
 
 /**
+ * @summary Regenerate planning for a single employee, preserving all other employees' entries
+ */
+export const getGenerateEmployeePlanningUrl = (
+  year: number,
+  month: number,
+  employeeId: number,
+) => {
+  return `/api/planning/${year}/${month}/generate/employee/${employeeId}`;
+};
+
+export const generateEmployeePlanning = async (
+  year: number,
+  month: number,
+  employeeId: number,
+  generatePlanningBody: GeneratePlanningBody,
+  options?: RequestInit,
+): Promise<MonthPlanning> => {
+  return customFetch<MonthPlanning>(
+    getGenerateEmployeePlanningUrl(year, month, employeeId),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(generatePlanningBody),
+    },
+  );
+};
+
+export const getGenerateEmployeePlanningMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateEmployeePlanning>>,
+    TError,
+    {
+      year: number;
+      month: number;
+      employeeId: number;
+      data: BodyType<GeneratePlanningBody>;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof generateEmployeePlanning>>,
+  TError,
+  {
+    year: number;
+    month: number;
+    employeeId: number;
+    data: BodyType<GeneratePlanningBody>;
+  },
+  TContext
+> => {
+  const mutationKey = ["generateEmployeePlanning"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof generateEmployeePlanning>>,
+    {
+      year: number;
+      month: number;
+      employeeId: number;
+      data: BodyType<GeneratePlanningBody>;
+    }
+  > = (props) => {
+    const { year, month, employeeId, data } = props ?? {};
+
+    return generateEmployeePlanning(
+      year,
+      month,
+      employeeId,
+      data,
+      requestOptions,
+    );
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GenerateEmployeePlanningMutationResult = NonNullable<
+  Awaited<ReturnType<typeof generateEmployeePlanning>>
+>;
+export type GenerateEmployeePlanningMutationBody =
+  BodyType<GeneratePlanningBody>;
+export type GenerateEmployeePlanningMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Regenerate planning for a single employee, preserving all other employees' entries
+ */
+export const useGenerateEmployeePlanning = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateEmployeePlanning>>,
+    TError,
+    {
+      year: number;
+      month: number;
+      employeeId: number;
+      data: BodyType<GeneratePlanningBody>;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof generateEmployeePlanning>>,
+  TError,
+  {
+    year: number;
+    month: number;
+    employeeId: number;
+    data: BodyType<GeneratePlanningBody>;
+  },
+  TContext
+> => {
+  return useMutation(getGenerateEmployeePlanningMutationOptions(options));
+};
+
+/**
  * @summary Confirm the planning for a month and update all counters
  */
 export const getConfirmPlanningUrl = (year: number, month: number) => {

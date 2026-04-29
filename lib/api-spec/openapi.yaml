@@ -576,6 +576,41 @@ paths:
               schema:
                 $ref: "#/components/schemas/MonthPlanning"
 
+  /planning/{year}/{month}/generate/employee/{employeeId}:
+    post:
+      operationId: generateEmployeePlanning
+      tags: [planning]
+      summary: Regenerate planning for a single employee, preserving all other employees' entries
+      parameters:
+        - name: year
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: month
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: employeeId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GeneratePlanningBody"
+      responses:
+        "200":
+          description: Planning updated for employee
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonthPlanning"
+
   /planning/{year}/{month}/confirm:
     post:
       operationId: confirmPlanning
