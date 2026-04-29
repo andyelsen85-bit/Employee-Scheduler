@@ -222,6 +222,7 @@ router.post("/planning/:year/:month/generate", async (req, res): Promise<void> =
     month,
     employees: employees.map((e) => ({
       id: e.id,
+      name: e.name,
       country: e.country,
       contractPercent: e.contractPercent,
       weeklyContractHours: e.weeklyContractHours,
