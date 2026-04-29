@@ -165,12 +165,26 @@ function distributeJlDays(
     jlAssignments[emp.id] = new Set();
     if (jlDays <= 0 || workingDays.length === 0) continue;
 
-    const count = Math.min(jlDays, workingDays.length);
-    // Shuffle first, then stable-sort by load — randomness is preserved within equal-load buckets
-    const shuffled = shuffle([...workingDays]);
-    shuffled.sort((a, b) => (jlCountByDate[a] ?? 0) - (jlCountByDate[b] ?? 0));
+    // Prefer placing pre-assigned JL on weekdays the employee already wants as JL.
+    // This way the monthly JL "merges" into a preference-JL slot rather than adding
+    // an extra JL on a neutral day (which would cause unnecessary PRM undershoot).
+    const jlPrefWeekdays = new Set(
+      (emp.dayCodePreferences ?? [])
+        .filter((p) => p.code === "JL")
+        .map((p) => p.day)
+    );
+    const preferredJlWorkingDays = workingDays.filter((d) => jlPrefWeekdays.has(getDayOfWeek0Mon(d)));
+    const otherWorkingDays = workingDays.filter((d) => !jlPrefWeekdays.has(getDayOfWeek0Mon(d)));
 
-    const picked = shuffled.slice(0, count);
+    // Within each tier, shuffle then stable-sort by load
+    const shuffledPref = shuffle([...preferredJlWorkingDays]);
+    shuffledPref.sort((a, b) => (jlCountByDate[a] ?? 0) - (jlCountByDate[b] ?? 0));
+    const shuffledOther = shuffle([...otherWorkingDays]);
+    shuffledOther.sort((a, b) => (jlCountByDate[a] ?? 0) - (jlCountByDate[b] ?? 0));
+
+    const prioritized = [...shuffledPref, ...shuffledOther];
+    const count = Math.min(jlDays, workingDays.length);
+    const picked = prioritized.slice(0, count);
     for (const d of picked) {
       jlAssignments[emp.id].add(d);
       jlCountByDate[d] = (jlCountByDate[d] ?? 0) + 1;
