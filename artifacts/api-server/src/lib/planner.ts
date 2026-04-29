@@ -359,14 +359,17 @@ export function generatePlanning(params: {
       ? regularHours.reduce((best, h) => Math.abs(h - fteDaily) <= Math.abs(best - fteDaily) ? h : best, regularHours[0])
       : null;
 
-    // Helper: expected hours for a candidate shift day, considering day-code preferences
+    // Helper: expected hours for a candidate shift day.
+    // When multiple preferences exist for the same weekday, uses their average so that
+    // the neededJL calculation correctly accounts for the rotation across all codes.
     const getExpectedHours = (dateStr: string): number => {
       const dow = getDayOfWeek0Mon(dateStr);
-      const pref = (emp.dayCodePreferences ?? []).find(
-        (p) => p.day === dow && p.code !== "JL" && p.code !== "C0" && emp.allowedShiftCodes.includes(p.code)
-      );
-      if (pref) return shiftCodes[pref.code]?.hours ?? (typicalShiftHours ?? 8);
-      return typicalShiftHours ?? 8;
+      const uniquePrefs = (emp.dayCodePreferences ?? [])
+        .filter((p) => p.day === dow && p.code !== "JL" && p.code !== "C0" && emp.allowedShiftCodes.includes(p.code))
+        .filter((p, idx, arr) => arr.findIndex((q) => q.code === p.code) === idx);
+      if (uniquePrefs.length === 0) return typicalShiftHours ?? 8;
+      const avg = uniquePrefs.reduce((s, p) => s + (shiftCodes[p.code]?.hours ?? 0), 0) / uniquePrefs.length;
+      return avg;
     };
 
     // Preference-weighted total: sum of expected hours if all candidate days were shift days
@@ -455,6 +458,12 @@ export function generatePlanning(params: {
     remainingShiftDays[emp.id] = empShiftDays[emp.id].length;
   }
 
+  // Round-robin rotation index per employee per day-of-week.
+  // Advances each time a shift day (non-JL, non-C0) is processed, so preferences
+  // cycle evenly: e.g. [X80, TT8] on Monday → X80, TT8, X80, TT8 …
+  const dayPrefRotation: Record<number, Record<number, number>> = {};
+  for (const emp of employees) dayPrefRotation[emp.id] = {};
+
   const homeworkCountThisMonth: Record<number, number> = {};
   const plannedHoursByEmployee: Record<number, number> = {};
   const onsiteCountByEmployee: Record<number, number> = {};
@@ -535,11 +544,18 @@ export function generatePlanning(params: {
       let preferredType: "onsite" | "homework" | "cowork" =
         empDayTypeMap[emp.id]?.[dateStr] ?? "onsite";
 
-      // Day-of-week code preference: find first valid non-JL/non-C0 preference for this weekday
-      const matchingPrefs = (emp.dayCodePreferences ?? []).filter(
-        (p) => p.day === dayOfWeek && p.code !== "JL" && p.code !== "C0" && emp.allowedShiftCodes.includes(p.code)
-      );
-      const dayPrefCode = matchingPrefs[0]?.code ?? null;
+      // Day-of-week code preference: rotate round-robin through all valid non-JL/non-C0
+      // preferences for this weekday. Deduplicate by code first so duplicates don't skew
+      // the rotation. The counter advances once per actual shift day reached here.
+      const matchingPrefs = (emp.dayCodePreferences ?? [])
+        .filter((p) => p.day === dayOfWeek && p.code !== "JL" && p.code !== "C0" && emp.allowedShiftCodes.includes(p.code))
+        .filter((p, idx, arr) => arr.findIndex((q) => q.code === p.code) === idx);
+      let dayPrefCode: string | null = null;
+      if (matchingPrefs.length > 0) {
+        const rotIdx = dayPrefRotation[emp.id][dayOfWeek] ?? 0;
+        dayPrefCode = matchingPrefs[rotIdx % matchingPrefs.length].code;
+        dayPrefRotation[emp.id][dayOfWeek] = rotIdx + 1;
+      }
       const dayPrefCodeValid = dayPrefCode !== null;
       const dayPrefType = dayPrefCodeValid ? (shiftCodes[dayPrefCode]?.type as "onsite" | "homework" | "cowork" | undefined) ?? null : null;
       if (dayPrefType === "onsite" || dayPrefType === "homework" || dayPrefType === "cowork") {
