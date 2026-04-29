@@ -103,6 +103,17 @@ export default function Planning() {
     });
   }
 
+  // Desk usage: date → Set of used desk codes
+  const usedDesksByDate = new Map<string, Set<string>>();
+  if (planning) {
+    for (const e of planning.entries) {
+      if (!e.deskCode) continue;
+      const key = e.date.slice(0, 10);
+      if (!usedDesksByDate.has(key)) usedDesksByDate.set(key, new Set());
+      usedDesksByDate.get(key)!.add(e.deskCode);
+    }
+  }
+
   // Desk clash detection: date → deskCode → [employeeIds]
   const deskClashes = new Map<string, Set<number>>();
   if (planning) {
@@ -565,6 +576,50 @@ export default function Planning() {
                   })}
                     </Fragment>
                   ))}
+                  {/* Free desks row */}
+                  {allDeskCodes.length > 0 && (
+                    <>
+                      <tr className="border-t-2 border-border bg-muted/30 sticky bottom-0 z-10">
+                        <td className="px-2 py-1.5 font-semibold text-xs text-muted-foreground sticky left-0 bg-muted/30 z-20 border-r shadow-[1px_0_0_0_var(--color-border)] whitespace-nowrap">
+                          Free Desks
+                        </td>
+                        {daysInMonth.map(day => {
+                          const dateStr = format(day, "yyyy-MM-dd");
+                          const weekend = isWeekend(day);
+                          if (weekend) {
+                            return <td key={day.toISOString()} className="border-r bg-muted/40" />;
+                          }
+                          const used = usedDesksByDate.get(dateStr) ?? new Set<string>();
+                          const freeDesks = allDeskCodes.filter(({ code }) => !used.has(code));
+                          return (
+                            <td key={day.toISOString()} className="p-1 border-r align-top">
+                              <div className="flex flex-col gap-0.5">
+                                {freeDesks.map(({ code }) => {
+                                  const color = deskColorMap.get(code);
+                                  return (
+                                    <span
+                                      key={code}
+                                      className="text-[9px] font-bold font-mono rounded px-1 py-0.5 leading-tight text-center block border"
+                                      style={color
+                                        ? { backgroundColor: color.bg, color: color.text, borderColor: color.border }
+                                        : { backgroundColor: '#f1f5f9', color: '#94a3b8', borderColor: '#e2e8f0' }
+                                      }
+                                    >
+                                      {code}
+                                    </span>
+                                  );
+                                })}
+                                {freeDesks.length === 0 && (
+                                  <span className="text-[9px] text-muted-foreground text-center">full</span>
+                                )}
+                              </div>
+                            </td>
+                          );
+                        })}
+                        <td className="px-3 py-1.5 sticky right-0 bg-muted/30 z-20 border-l shadow-[-1px_0_0_0_var(--color-border)]" />
+                      </tr>
+                    </>
+                  )}
                 </tbody>
               </table>
             </div>
