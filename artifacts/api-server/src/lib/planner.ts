@@ -652,13 +652,19 @@ export function generatePlanning(params: {
             const allAvailable = office.deskCodes.filter((dc) => !weekUsed.has(dc));
             if (allAvailable.length > 0) {
               deskAvailableFromPool = true;
-              // Prefer height-adjustable desks if the employee has that preference
-              const haDeskPool = emp.prefersHeightAdjustableDesk
-                ? allAvailable.filter((dc) => (office.heightAdjustableDesks ?? []).includes(dc))
-                : [];
-              const candidatePool = haDeskPool.length > 0 ? haDeskPool : allAvailable;
-              const randomIdx = Math.floor(Math.random() * candidatePool.length);
-              assignedDeskCode = candidatePool[randomIdx];
+              const haDesks = office.heightAdjustableDesks ?? [];
+              if (emp.prefersHeightAdjustableDesk) {
+                // HA-preferring employees: pick from HA pool first, fall back to all
+                const haDeskPool = allAvailable.filter((dc) => haDesks.includes(dc));
+                const candidatePool = haDeskPool.length > 0 ? haDeskPool : allAvailable;
+                assignedDeskCode = candidatePool[Math.floor(Math.random() * candidatePool.length)];
+              } else {
+                // Non-HA employees: prefer non-HA desks to leave HA desks for those who need them.
+                // Only fall back to HA desks when no standard desks remain.
+                const nonHaDeskPool = allAvailable.filter((dc) => !haDesks.includes(dc));
+                const candidatePool = nonHaDeskPool.length > 0 ? nonHaDeskPool : allAvailable;
+                assignedDeskCode = candidatePool[Math.floor(Math.random() * candidatePool.length)];
+              }
               // Reserve desk for the whole week immediately
               (deskUsedByWeekByOffice[weekStart] ??= {})[office.id] ??= new Set();
               deskUsedByWeekByOffice[weekStart][office.id].add(assignedDeskCode);
