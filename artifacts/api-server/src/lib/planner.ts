@@ -346,6 +346,49 @@ export function generatePlanning(params: {
     });
   }
 
+  // ── Satellite office detection & multi-office rotation ─────────────────────
+  // A satellite office is one that has at least one SPOC member assigned to it, but
+  // is NOT the primary SPOC office (the office where exclusively-SPOC employees live).
+  // Example: Wiltz has Boris + Nanz (SPOC) + Dirk (non-SPOC). It is a satellite because
+  // none of its employees are SPOC-only (Dirk is not SPOC; Boris/Nanz also belong to SPOC).
+  const primarySpocOffice = offices.find((o) =>
+    o.employeeIds.some((empId) => {
+      const emp = employees.find((e) => e.id === empId);
+      return emp?.isSpoc && offices.filter((o2) => o2.employeeIds.includes(empId)).length === 1;
+    })
+  );
+
+  const satelliteOffices: OfficeRecord[] = primarySpocOffice
+    ? offices.filter(
+        (o) =>
+          o.id !== primarySpocOffice.id &&
+          o.employeeIds.some((empId) => employees.find((e) => e.id === empId)?.isSpoc)
+      )
+    : [];
+
+  // For each satellite, rotate multi-office employees between offices week by week,
+  // staggered by employee index so colleagues cover different offices the same week.
+  const weeklyPreferredOffice: Record<number, Record<string, number>> = {};
+
+  for (const satOffice of satelliteOffices) {
+    const satMultiEmps = employees
+      .filter((emp) => {
+        const empOfficeIds = offices.filter((o) => o.employeeIds.includes(emp.id)).map((o) => o.id);
+        return empOfficeIds.includes(satOffice.id) && empOfficeIds.length > 1;
+      })
+      .sort((a, b) => a.id - b.id); // deterministic order → deterministic offsets
+
+    satMultiEmps.forEach((emp, empIdx) => {
+      const empOfficeList = offices.filter((o) => o.employeeIds.includes(emp.id));
+      if (!weeklyPreferredOffice[emp.id]) weeklyPreferredOffice[emp.id] = {};
+      weekStarts.forEach((wk, wkIdx) => {
+        // Offset by empIdx: colleague A goes to SPOC while B goes to Wiltz, then swap
+        const preferredIdx = (wkIdx + empIdx) % empOfficeList.length;
+        weeklyPreferredOffice[emp.id][wk] = empOfficeList[preferredIdx].id;
+      });
+    });
+  }
+
   // JL day assignment (pre-configured from monthly config)
   const jlAssignments = distributeJlDays(employees, workingDays, jlDays);
 
@@ -642,9 +685,11 @@ export function generatePlanning(params: {
       }
       const dayPrefCodeValid = dayPrefCode !== null;
       const dayPrefType = dayPrefCodeValid ? (shiftCodes[dayPrefCode!]?.type as "onsite" | "homework" | "cowork" | undefined) ?? null : null;
-      if (dayPrefType === "onsite" || dayPrefType === "homework" || dayPrefType === "cowork") {
-        preferredType = dayPrefType;
-      }
+
+      // NOTE: we intentionally do NOT override preferredType with dayPrefType here.
+      // The weekly type (onsite / homework / cowork) is pre-determined in Phase 1 so that
+      // all days of a week stay in the same location group. Day preferences only influence
+      // WHICH specific shift code is selected (via pickCode), not the location type.
 
       // Permanence duty overrides everything — the employee must be onsite.
       // Day preferences and week-type randomisation are both subordinate to this rule.
@@ -653,8 +698,16 @@ export function generatePlanning(params: {
         dayPrefCode = null; // suppress any non-onsite day preference
       }
 
-      // Find which office(s) this employee belongs to
-      const empOffices = offices.filter((o) => o.employeeIds.includes(emp.id));
+      // Find which office(s) this employee belongs to, reordered so the
+      // weekly-preferred office comes first (satellite rotation).
+      const empOfficesFull = offices.filter((o) => o.employeeIds.includes(emp.id));
+      const preferredOfficeId = weeklyPreferredOffice[emp.id]?.[weekStart];
+      const empOffices = preferredOfficeId
+        ? [
+            ...empOfficesFull.filter((o) => o.id === preferredOfficeId),
+            ...empOfficesFull.filter((o) => o.id !== preferredOfficeId),
+          ]
+        : empOfficesFull;
       let assignedDeskCode: string | null = null;
       let deskAvailableFromPool = false;
 
@@ -822,6 +875,31 @@ export function generatePlanning(params: {
     }
     if (g2Members.length > 0 && !g2Members.some((e) => onsiteSet.has(e.id))) {
       violations.push({ date: dateStr, type: "missing_perma2", message: "Permanence Group 2 not on-site", employeeId: null });
+    }
+  }
+
+  // ── Per-week satellite office coverage ──────────────────────────────────────
+  // For each week, at least one employee assigned to a satellite office must be
+  // onsite there (desk in that office). Locked entries count for coverage too.
+  const allEntriesForCoverage = [...entries, ...lockedEntries];
+  for (const wk of weekStarts) {
+    const weekDaySet = new Set(workingDays.filter((d) => getWeekNumber(d) === wk));
+    for (const satOffice of satelliteOffices) {
+      const hasOnsiteAtSatellite = allEntriesForCoverage.some(
+        (e) =>
+          weekDaySet.has(e.date) &&
+          satOffice.employeeIds.includes(e.employeeId) &&
+          isOnsiteCode(e.shiftCode, shiftCodes) &&
+          satOffice.deskCodes.includes(e.deskCode ?? "")
+      );
+      if (!hasOnsiteAtSatellite) {
+        violations.push({
+          date: wk,
+          type: "missing_satellite_office",
+          message: `No one onsite at satellite office (id ${satOffice.id}) week of ${wk}`,
+          employeeId: null,
+        });
+      }
     }
   }
 
