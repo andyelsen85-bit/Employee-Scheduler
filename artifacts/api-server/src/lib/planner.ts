@@ -257,9 +257,14 @@ function predetermineWeeklyTypes(
 
   // Use ONSITE_PLAN_RATIO (60%) as the target when the employee has remote options;
   // if no remote options exist, plan all weeks onsite.
+  // Math.floor keeps us from overshooting: e.g. 4 weeks → 2 onsite (not 3), 6 weeks → 3 (not 4).
+  // Math.max ensures we never fall below the 50% hard floor (MIN_ONSITE_RATIO).
   const hasRemote = canHomework || canCowork;
   const targetOnsiteWeeks = hasRemote
-    ? Math.ceil(numWeeks * ONSITE_PLAN_RATIO)
+    ? Math.max(
+        Math.floor(numWeeks * ONSITE_PLAN_RATIO),
+        Math.ceil(numWeeks * MIN_ONSITE_RATIO)
+      )
     : numWeeks;
   // Remaining weeks go to homework and/or cowork (40% target for eligible employees)
   const remaining = numWeeks - targetOnsiteWeeks;
