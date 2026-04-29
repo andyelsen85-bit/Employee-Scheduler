@@ -848,8 +848,12 @@ export function generatePlanning(params: {
   // ── VIOLATIONS ─────────────────────────────────────────────────────────────
   const violations: PlanningViolation[] = [];
 
+  // Combine generated entries with locked entries so that when a single employee is
+  // regenerated all other employees' preserved plans are visible to violation checks.
+  const allEntriesForViolations = [...entries, ...lockedEntries];
+
   for (const dateStr of workingDays) {
-    const dayEntries = entries.filter((e) => e.date === dateStr);
+    const dayEntries = allEntriesForViolations.filter((e) => e.date === dateStr);
     const onsiteSet = new Set(
       dayEntries.filter((e) => isOnsiteCode(e.shiftCode, shiftCodes)).map((e) => e.employeeId)
     );
@@ -881,11 +885,10 @@ export function generatePlanning(params: {
   // ── Per-week satellite office coverage ──────────────────────────────────────
   // For each week, at least one employee assigned to a satellite office must be
   // onsite there (desk in that office). Locked entries count for coverage too.
-  const allEntriesForCoverage = [...entries, ...lockedEntries];
   for (const wk of weekStarts) {
     const weekDaySet = new Set(workingDays.filter((d) => getWeekNumber(d) === wk));
     for (const satOffice of satelliteOffices) {
-      const hasOnsiteAtSatellite = allEntriesForCoverage.some(
+      const hasOnsiteAtSatellite = allEntriesForViolations.some(
         (e) =>
           weekDaySet.has(e.date) &&
           satOffice.employeeIds.includes(e.employeeId) &&
