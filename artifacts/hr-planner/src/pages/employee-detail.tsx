@@ -152,6 +152,7 @@ export default function EmployeeDetail() {
           weeklyContractHours: Number(form.weeklyContractHours),
           permanenceGroup: form.permanenceGroup ? Number(form.permanenceGroup) : null,
           permanenceLevel: form.permanenceLevel ? Number(form.permanenceLevel) : null,
+          preferredJlWeekday: form.preferredJlWeekday === "none" ? null : Number(form.preferredJlWeekday),
           allowedShiftCodes: codes,
         } as Parameters<typeof updateEmployee.mutate>[0]["data"],
       },

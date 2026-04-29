@@ -37,18 +37,32 @@ export default function Planning() {
     query: { queryKey: getListOfficesQueryKey() }
   });
 
-  // Build a palette of colors per office and a map from desk code → color pair
+  // Shift-type → inline color style, matching the Shift Codes page palette
+  const SHIFT_TYPE_STYLE: Record<string, { bg: string; text: string; border: string }> = {
+    onsite:   { bg: "rgba(59,130,246,0.12)",  text: "#1d4ed8", border: "rgba(59,130,246,0.25)" },
+    homework: { bg: "rgba(34,197,94,0.12)",   text: "#15803d", border: "rgba(34,197,94,0.25)" },
+    cowork:   { bg: "rgba(245,158,11,0.12)",  text: "#b45309", border: "rgba(245,158,11,0.25)" },
+    holiday:  { bg: "rgba(239,68,68,0.12)",   text: "#b91c1c", border: "rgba(239,68,68,0.25)" },
+    jl:       { bg: "rgba(168,85,247,0.12)",  text: "#7e22ce", border: "rgba(168,85,247,0.25)" },
+  };
+
+  // Map shift code → type for fast lookup
+  const shiftTypeMap = new Map<string, string>(
+    (shiftCodes ?? []).map(sc => [sc.code, sc.type])
+  );
+
+  // Desk-code → office color map
   const OFFICE_PALETTE = [
-    { bg: "#dbeafe", text: "#1d4ed8" },
-    { bg: "#dcfce7", text: "#15803d" },
-    { bg: "#f3e8ff", text: "#7e22ce" },
-    { bg: "#fed7aa", text: "#c2410c" },
-    { bg: "#fce7f3", text: "#be185d" },
-    { bg: "#e0f2fe", text: "#0369a1" },
-    { bg: "#fef9c3", text: "#a16207" },
-    { bg: "#ccfbf1", text: "#0f766e" },
+    { bg: "#dbeafe", text: "#1d4ed8", border: "#bfdbfe" },
+    { bg: "#dcfce7", text: "#15803d", border: "#bbf7d0" },
+    { bg: "#f3e8ff", text: "#7e22ce", border: "#e9d5ff" },
+    { bg: "#fed7aa", text: "#c2410c", border: "#fcd34d" },
+    { bg: "#fce7f3", text: "#be185d", border: "#fbcfe8" },
+    { bg: "#e0f2fe", text: "#0369a1", border: "#bae6fd" },
+    { bg: "#fef9c3", text: "#a16207", border: "#fef08a" },
+    { bg: "#ccfbf1", text: "#0f766e", border: "#99f6e4" },
   ];
-  const deskColorMap = new Map<string, { bg: string; text: string }>();
+  const deskColorMap = new Map<string, { bg: string; text: string; border: string }>();
   if (offices) {
     offices.forEach((office, idx) => {
       const color = OFFICE_PALETTE[idx % OFFICE_PALETTE.length];
@@ -276,23 +290,35 @@ export default function Planning() {
                                 <div className="flex flex-col gap-0.5">
                                 <Popover>
                                   <PopoverTrigger asChild>
-                                    <button className={`px-2 py-1 text-xs font-semibold rounded w-full border border-transparent hover:border-border transition-colors ${hasViolation ? 'text-destructive ring-1 ring-destructive' : 'bg-primary/10 text-primary'}`}>
-                                      {entry.shiftCode}
-                                    </button>
+                                    {(() => {
+                                      const codeType = shiftTypeMap.get(entry.shiftCode!);
+                                      const style = !hasViolation && codeType ? SHIFT_TYPE_STYLE[codeType] : null;
+                                      return (
+                                        <button
+                                          className={`px-2 py-1 text-xs font-semibold rounded w-full border transition-colors hover:opacity-80 ${hasViolation ? 'bg-destructive/10 text-destructive border-destructive/30 ring-1 ring-destructive' : ''}`}
+                                          style={style ? { backgroundColor: style.bg, color: style.text, borderColor: style.border } : undefined}
+                                        >
+                                          {entry.shiftCode}
+                                        </button>
+                                      );
+                                    })()}
                                   </PopoverTrigger>
                                   <PopoverContent className="w-48 p-2" side="bottom">
                                     <div className="grid grid-cols-2 gap-1">
-                                      {shiftCodes?.map(sc => (
-                                        <Button 
-                                          key={sc.code} 
-                                          size="sm" 
-                                          variant={sc.code === entry.shiftCode ? "default" : "outline"}
-                                          onClick={() => handleUpdateShift(entry.id, sc.code)}
-                                          className="text-xs"
-                                        >
-                                          {sc.code}
-                                        </Button>
-                                      ))}
+                                      {shiftCodes?.map(sc => {
+                                        const s = SHIFT_TYPE_STYLE[sc.type];
+                                        const isActive = sc.code === entry.shiftCode;
+                                        return (
+                                          <button
+                                            key={sc.code}
+                                            onClick={() => handleUpdateShift(entry.id, sc.code)}
+                                            className={`text-xs font-semibold px-2 py-1.5 rounded border transition-colors hover:opacity-80 ${isActive ? 'ring-2 ring-offset-1' : ''}`}
+                                            style={s ? { backgroundColor: s.bg, color: s.text, borderColor: s.border } : undefined}
+                                          >
+                                            {sc.code}
+                                          </button>
+                                        );
+                                      })}
                                       <Button 
                                         size="sm" 
                                         variant="outline" 
