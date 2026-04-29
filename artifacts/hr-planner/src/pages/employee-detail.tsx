@@ -9,6 +9,8 @@ import {
   getListShiftCodesQueryKey,
   useListDepartments,
   getListDepartmentsQueryKey,
+  useListOffices,
+  getListOfficesQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -57,6 +59,9 @@ export default function EmployeeDetail() {
   const { data: departments } = useListDepartments({
     query: { queryKey: getListDepartmentsQueryKey() },
   });
+  const { data: officesList } = useListOffices({
+    query: { queryKey: getListOfficesQueryKey() },
+  });
 
   const updateEmployee = useUpdateEmployee();
   const updateCounters = useUpdateEmployeeCounters();
@@ -80,6 +85,7 @@ export default function EmployeeDetail() {
         isSpoc: employee.isSpoc,
         isManagement: employee.isManagement,
         departmentId: (employee as Record<string, unknown>).departmentId ?? null,
+        preferredOfficeId: (employee as Record<string, unknown>).preferredOfficeId ?? null,
         notes: employee.notes ?? "",
       });
       setCounters({
@@ -302,6 +308,22 @@ export default function EmployeeDetail() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Preferred Office</Label>
+                <Select
+                  value={form.preferredOfficeId != null ? String(form.preferredOfficeId) : "none"}
+                  onValueChange={(v) => setForm({ ...form, preferredOfficeId: v === "none" ? null : Number(v) })}
+                >
+                  <SelectTrigger><SelectValue placeholder="None (auto)" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None (auto)</SelectItem>
+                    {officesList?.map(o => (
+                      <SelectItem key={o.id} value={String(o.id)}>{o.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">The auto-planner will prioritise placing this employee in this office and will try to assign them onsite whenever a desk is free there.</p>
               </div>
               <Separator />
               <div className="space-y-3">

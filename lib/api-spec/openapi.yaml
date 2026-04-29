@@ -864,6 +864,10 @@ components:
           type: integer
           nullable: true
           description: "ID of the department this employee belongs to"
+        preferredOfficeId:
+          type: integer
+          nullable: true
+          description: "ID of the office this employee prefers to work from (used by the auto-planner)"
         notes:
           type: string
           nullable: true
@@ -931,6 +935,10 @@ components:
         departmentId:
           type: integer
           nullable: true
+        preferredOfficeId:
+          type: integer
+          nullable: true
+          description: "Preferred office for onsite planning"
         notes:
           type: string
           nullable: true
@@ -992,6 +1000,10 @@ components:
         departmentId:
           type: integer
           nullable: true
+        preferredOfficeId:
+          type: integer
+          nullable: true
+          description: "Preferred office for onsite planning"
         notes:
           type: string
           nullable: true

@@ -65,6 +65,8 @@ export interface Employee {
   prefersHeightAdjustableDesk?: boolean | null;
   /** ID of the department this employee belongs to */
   departmentId?: number | null;
+  /** ID of the office this employee prefers to work from (used by the auto-planner) */
+  preferredOfficeId?: number | null;
   notes?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -87,6 +89,8 @@ export interface CreateEmployeeBody {
   overtimeHours?: number;
   homeworkDaysUsedThisYear?: number;
   departmentId?: number | null;
+  /** Preferred office for onsite planning */
+  preferredOfficeId?: number | null;
   notes?: string | null;
 }
 
@@ -111,6 +115,8 @@ export interface UpdateEmployeeBody {
   dayCodePreferences?: UpdateEmployeeBodyDayCodePreferencesItem[] | null;
   prefersHeightAdjustableDesk?: boolean | null;
   departmentId?: number | null;
+  /** Preferred office for onsite planning */
+  preferredOfficeId?: number | null;
   notes?: string | null;
 }
 

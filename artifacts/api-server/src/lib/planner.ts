@@ -25,6 +25,7 @@ export type EmployeeRecord = {
   homeworkDaysUsedThisYear: number;
   dayCodePreferences: DayCodePreference[];
   prefersHeightAdjustableDesk: boolean;
+  preferredOfficeId: number | null;
 };
 
 export type OfficeRecord = {
@@ -721,13 +722,15 @@ export function generatePlanning(params: {
       // and day preferences still apply even when on permanence duty.
 
       // Find which office(s) this employee belongs to, reordered so the
-      // weekly-preferred office comes first (satellite rotation).
+      // preferred office comes first. Priority: employee's explicit preferred office
+      // → satellite rotation preferred office → rest.
       const empOfficesFull = offices.filter((o) => o.employeeIds.includes(emp.id));
-      const preferredOfficeId = weeklyPreferredOffice[emp.id]?.[weekStart];
-      const empOffices = preferredOfficeId
+      const rotationPreferredOfficeId = weeklyPreferredOffice[emp.id]?.[weekStart];
+      const effectivePreferredOfficeId = emp.preferredOfficeId ?? rotationPreferredOfficeId;
+      const empOffices = effectivePreferredOfficeId
         ? [
-            ...empOfficesFull.filter((o) => o.id === preferredOfficeId),
-            ...empOfficesFull.filter((o) => o.id !== preferredOfficeId),
+            ...empOfficesFull.filter((o) => o.id === effectivePreferredOfficeId),
+            ...empOfficesFull.filter((o) => o.id !== effectivePreferredOfficeId),
           ]
         : empOfficesFull;
       let assignedDeskCode: string | null = null;
@@ -864,6 +867,60 @@ export function generatePlanning(params: {
         isLocked: false,
         requestedOff: false,
       });
+    }
+  }
+
+  // ── PHASE 3: Second pass — promote homework/cowork to onsite where desks are free ──
+  // For each employee-week where a desk was reserved in Phase 2 but the week type was
+  // homework/cowork, upgrade those days to onsite to maximise office utilisation.
+  // Days with an explicit homework/cowork day-code preference are left unchanged (user intent).
+  for (const emp of employees) {
+    if (!emp.allowedShiftCodes.some((c) => shiftCodes[c]?.type === "onsite")) continue;
+
+    const shiftDaysForEmp = empShiftDays[emp.id] ?? [];
+    const weekKeysForEmp = [...new Set(shiftDaysForEmp.map(getWeekNumber))];
+    const empTarget = empContractualHours[emp.id];
+    const dailyTarget = shiftDaysForEmp.length > 0 ? empTarget / shiftDaysForEmp.length : 8;
+    const onsiteCode = bestCodeByTarget("onsite", emp.allowedShiftCodes, shiftCodes, dailyTarget);
+    if (!onsiteCode) continue;
+
+    for (const wk of weekKeysForEmp) {
+      const reservedDesk = weeklyDeskByEmp[emp.id]?.[wk];
+      if (!reservedDesk) continue; // No desk reserved for this week — cannot go onsite
+
+      // Upgrade all non-locked, non-preferred homework/cowork entries in this week
+      for (const entry of entries) {
+        if (entry.employeeId !== emp.id || entry.isLocked || entry.requestedOff) continue;
+        if (getWeekNumber(entry.date) !== wk) continue;
+        if (!entry.shiftCode) continue;
+
+        const currentType = shiftCodes[entry.shiftCode]?.type;
+        if (currentType !== "homework" && currentType !== "cowork") continue;
+
+        // Respect explicit day preferences: if this weekday has a homework/cowork preference,
+        // leave it as-is (the employee explicitly wants to stay remote that day).
+        const dow = getDayOfWeek0Mon(entry.date);
+        const hasExplicitRemotePref = (emp.dayCodePreferences ?? []).some(
+          (p) =>
+            p.day === dow &&
+            emp.allowedShiftCodes.includes(p.code) &&
+            (shiftCodes[p.code]?.type === "homework" || shiftCodes[p.code]?.type === "cowork")
+        );
+        if (hasExplicitRemotePref) continue;
+
+        // Upgrade: replace with onsite code and assign the reserved desk
+        const oldHours = hoursForCode(entry.shiftCode, shiftCodes);
+        const newHours = hoursForCode(onsiteCode, shiftCodes);
+        entry.shiftCode = onsiteCode;
+        entry.deskCode = reservedDesk;
+
+        onsiteCountByEmployee[emp.id] = (onsiteCountByEmployee[emp.id] ?? 0) + 1;
+        if (currentType === "homework") {
+          homeworkCountThisMonth[emp.id] = Math.max(0, (homeworkCountThisMonth[emp.id] ?? 0) - 1);
+        }
+        // Update hours tracking for accurate PRM violation reporting
+        plannedHoursByEmployee[emp.id] = (plannedHoursByEmployee[emp.id] ?? 0) + (newHours - oldHours);
+      }
     }
   }
 

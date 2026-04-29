@@ -44,6 +44,7 @@ router.post("/employees", async (req, res): Promise<void> => {
       overtimeHours: data.overtimeHours ?? 0,
       homeworkDaysUsedThisYear: data.homeworkDaysUsedThisYear ?? 0,
       departmentId: data.departmentId ?? null,
+      preferredOfficeId: data.preferredOfficeId ?? null,
       notes: data.notes ?? null,
     })
     .returning();
@@ -94,6 +95,7 @@ router.put("/employees/:id", async (req, res): Promise<void> => {
   if (data.dayCodePreferences !== undefined) updateData.dayCodePreferences = (data.dayCodePreferences ?? null) as unknown as Record<string, string> | null;
   if (data.prefersHeightAdjustableDesk !== undefined) updateData.prefersHeightAdjustableDesk = data.prefersHeightAdjustableDesk ?? undefined;
   if (data.departmentId !== undefined) updateData.departmentId = data.departmentId ?? null;
+  if (data.preferredOfficeId !== undefined) updateData.preferredOfficeId = data.preferredOfficeId ?? null;
   if (data.notes !== undefined) updateData.notes = data.notes ?? null;
 
   const [row] = await db

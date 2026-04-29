@@ -110,6 +110,12 @@ export const ListEmployeesResponseItem = zod.object({
     .number()
     .nullish()
     .describe("ID of the department this employee belongs to"),
+  preferredOfficeId: zod
+    .number()
+    .nullish()
+    .describe(
+      "ID of the office this employee prefers to work from (used by the auto-planner)",
+    ),
   notes: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -136,6 +142,10 @@ export const CreateEmployeeBody = zod.object({
   overtimeHours: zod.number().optional(),
   homeworkDaysUsedThisYear: zod.number().optional(),
   departmentId: zod.number().nullish(),
+  preferredOfficeId: zod
+    .number()
+    .nullish()
+    .describe("Preferred office for onsite planning"),
   notes: zod.string().nullish(),
 });
 
@@ -189,6 +199,12 @@ export const GetEmployeeResponse = zod.object({
     .number()
     .nullish()
     .describe("ID of the department this employee belongs to"),
+  preferredOfficeId: zod
+    .number()
+    .nullish()
+    .describe(
+      "ID of the office this employee prefers to work from (used by the auto-planner)",
+    ),
   notes: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -220,6 +236,10 @@ export const UpdateEmployeeBody = zod.object({
     .nullish(),
   prefersHeightAdjustableDesk: zod.boolean().nullish(),
   departmentId: zod.number().nullish(),
+  preferredOfficeId: zod
+    .number()
+    .nullish()
+    .describe("Preferred office for onsite planning"),
   notes: zod.string().nullish(),
 });
 
@@ -269,6 +289,12 @@ export const UpdateEmployeeResponse = zod.object({
     .number()
     .nullish()
     .describe("ID of the department this employee belongs to"),
+  preferredOfficeId: zod
+    .number()
+    .nullish()
+    .describe(
+      "ID of the office this employee prefers to work from (used by the auto-planner)",
+    ),
   notes: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -338,6 +364,12 @@ export const UpdateEmployeeCountersResponse = zod.object({
     .number()
     .nullish()
     .describe("ID of the department this employee belongs to"),
+  preferredOfficeId: zod
+    .number()
+    .nullish()
+    .describe(
+      "ID of the office this employee prefers to work from (used by the auto-planner)",
+    ),
   notes: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
