@@ -181,28 +181,39 @@ function distributeJlDays(
 }
 
 /**
- * Pre-compute which shift days should become JL substitutions for an employee
- * (to avoid overshooting target hours when all available codes exceed the daily target).
- * Prefers weekdays that appear as JL entries in dayCodePreferences.
+ * Pre-compute which shift days should become JL substitutions for an employee.
+ *
+ * Priority order:
+ *   1. Days whose weekday has an explicit JL preference (user wants free days here).
+ *   2. Days with NO code preference and not in avoidWeekdays (neutral days).
+ *   3. Days in avoidWeekdays (has a non-JL preference) — last resort, sorted by
+ *      highest expected hours first so we sacrifice the fewest preference-days.
  */
 function pickJlSubstitutionDates(
   candidateShiftDays: string[],
   neededJL: number,
-  preferredWeekdays: number[]
+  preferredWeekdays: number[],
+  avoidWeekdays: Set<number> = new Set(),
+  expectedHoursForDate: (d: string) => number = () => 8
 ): string[] {
   if (neededJL <= 0 || candidateShiftDays.length === 0) return [];
-  const n = Math.min(neededJL, candidateShiftDays.length - 1); // keep at least 1 real shift day
+  const n = Math.min(neededJL, candidateShiftDays.length - 1);
 
   const preferredSet = new Set(preferredWeekdays);
-  const preferred = shuffle(candidateShiftDays.filter((d) => preferredSet.has(getDayOfWeek0Mon(d))));
-  const others = shuffle(candidateShiftDays.filter((d) => !preferredSet.has(getDayOfWeek0Mon(d))));
+
+  // Tier 1: explicit JL preference weekdays
+  const tier1 = shuffle(candidateShiftDays.filter((d) => preferredSet.has(getDayOfWeek0Mon(d))));
+  // Tier 2: neutral days (no preference, not asked to avoid)
+  const tier2 = shuffle(
+    candidateShiftDays.filter((d) => !preferredSet.has(getDayOfWeek0Mon(d)) && !avoidWeekdays.has(getDayOfWeek0Mon(d)))
+  );
+  // Tier 3: days with a code preference — pick highest-hour days first to preserve low-hour preference days
+  const tier3 = candidateShiftDays
+    .filter((d) => !preferredSet.has(getDayOfWeek0Mon(d)) && avoidWeekdays.has(getDayOfWeek0Mon(d)))
+    .sort((a, b) => expectedHoursForDate(b) - expectedHoursForDate(a));
 
   const result: string[] = [];
-  for (const d of preferred) {
-    if (result.length >= n) break;
-    result.push(d);
-  }
-  for (const d of others) {
+  for (const d of [...tier1, ...tier2, ...tier3]) {
     if (result.length >= n) break;
     result.push(d);
   }
@@ -348,16 +359,41 @@ export function generatePlanning(params: {
       ? regularHours.reduce((best, h) => Math.abs(h - fteDaily) <= Math.abs(best - fteDaily) ? h : best, regularHours[0])
       : null;
 
+    // Helper: expected hours for a candidate shift day, considering day-code preferences
+    const getExpectedHours = (dateStr: string): number => {
+      const dow = getDayOfWeek0Mon(dateStr);
+      const pref = (emp.dayCodePreferences ?? []).find(
+        (p) => p.day === dow && p.code !== "JL" && p.code !== "C0" && emp.allowedShiftCodes.includes(p.code)
+      );
+      if (pref) return shiftCodes[pref.code]?.hours ?? (typicalShiftHours ?? 8);
+      return typicalShiftHours ?? 8;
+    };
+
+    // Preference-weighted total: sum of expected hours if all candidate days were shift days
+    const totalExpectedIfAllShift = candidateShiftDays.reduce((s, d) => s + getExpectedHours(d), 0);
+    // Average expected hours per shift day (accounts for short-hour preference codes like TT4)
+    const weightedAvgHours = candidateShiftDays.length > 0
+      ? totalExpectedIfAllShift / candidateShiftDays.length
+      : (typicalShiftHours ?? 8);
+
     let neededJL = 0;
-    if (typicalShiftHours !== null && typicalShiftHours > 0 && typicalShiftHours * candidateShiftDays.length > empTarget) {
-      neededJL = candidateShiftDays.length - Math.floor(empTarget / typicalShiftHours);
+    if (weightedAvgHours > 0 && totalExpectedIfAllShift > empTarget) {
+      neededJL = candidateShiftDays.length - Math.ceil(empTarget / weightedAvgHours);
     }
+    neededJL = Math.max(0, neededJL);
+
+    // Weekdays that have a non-JL/non-C0 code preference — protect from JL selection
+    const avoidJlWeekdays = new Set(
+      (emp.dayCodePreferences ?? [])
+        .filter((p) => p.code !== "JL" && p.code !== "C0" && emp.allowedShiftCodes.includes(p.code))
+        .map((p) => p.day)
+    );
 
     // Derive preferred JL weekdays from day code preferences (entries where code === "JL")
     const jlPreferredWeekdays = (emp.dayCodePreferences ?? [])
       .filter((p) => p.code === "JL")
       .map((p) => p.day);
-    const subDates = pickJlSubstitutionDates(candidateShiftDays, neededJL, jlPreferredWeekdays);
+    const subDates = pickJlSubstitutionDates(candidateShiftDays, neededJL, jlPreferredWeekdays, avoidJlWeekdays, getExpectedHours);
     jlSubstitutionDates[emp.id] = new Set(subDates);
 
     // Actual shift days exclude both pre-assigned JL and substitution JL
