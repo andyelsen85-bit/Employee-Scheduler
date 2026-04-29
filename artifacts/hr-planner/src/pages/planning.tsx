@@ -2,7 +2,8 @@ import { Layout } from "@/components/layout";
 import { useParams, Link } from "wouter";
 import { useGetMonthPlanning, getGetMonthPlanningQueryKey, useListEmployees, getListEmployeesQueryKey, useListShiftCodes, getListShiftCodesQueryKey, useGeneratePlanning, useConfirmPlanning, useUpdatePlanningEntry, useGetMonthlyConfig, getGetMonthlyConfigQueryKey, useListOffices, getListOfficesQueryKey } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Download, CheckCircle, Wand2, AlertCircle } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, CheckCircle, Wand2, AlertCircle, Trash2 } from "lucide-react";
+import { useState } from "react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -73,6 +74,7 @@ export default function Planning() {
   const generatePlanning = useGeneratePlanning();
   const confirmPlanning = useConfirmPlanning();
   const updateEntry = useUpdatePlanningEntry();
+  const [isClearing, setIsClearing] = useState(false);
 
   const handleGenerate = () => {
     generatePlanning.mutate({ year, month, data: { requestedDaysOff: [], overwriteExisting: true } }, {
@@ -90,6 +92,21 @@ export default function Planning() {
         toast({ title: "Planning confirmed successfully" });
       }
     });
+  };
+
+  const handleClear = async () => {
+    if (!confirm("Clear all planning entries for this month? This cannot be undone.")) return;
+    setIsClearing(true);
+    try {
+      const res = await fetch(`/api/planning/${year}/${month}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to clear planning");
+      queryClient.invalidateQueries({ queryKey: getGetMonthPlanningQueryKey(year, month) });
+      toast({ title: "Planning cleared" });
+    } catch {
+      toast({ title: "Error clearing planning", variant: "destructive" });
+    } finally {
+      setIsClearing(false);
+    }
   };
 
   const handleUpdateShift = (entryId: number, shiftCode: string) => {
@@ -169,6 +186,12 @@ export default function Planning() {
               <CheckCircle className="h-4 w-4 mr-2" />
               Confirm
             </Button>
+            {planning && (
+              <Button variant="outline" size="sm" onClick={handleClear} disabled={isClearing} className="text-destructive border-destructive/40 hover:bg-destructive/10">
+                <Trash2 className="h-4 w-4 mr-2" />
+                Clear
+              </Button>
+            )}
           </div>
         </div>
 

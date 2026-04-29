@@ -62,6 +62,8 @@ export default function EmployeeDetail() {
   const [counters, setCounters] = useState<Record<string, number>>({});
   const [allowedCodes, setAllowedCodes] = useState<Set<string>>(new Set());
   const [newTemplateName, setNewTemplateName] = useState("");
+  const [dayPrefs, setDayPrefs] = useState<Record<string, string | null>>({ Mon: null, Tue: null, Wed: null, Thu: null, Fri: null });
+  const [prefersHA, setPrefersHA] = useState(false);
 
   useEffect(() => {
     if (employee) {
@@ -86,6 +88,9 @@ export default function EmployeeDetail() {
         homeworkDaysUsedThisYear: employee.homeworkDaysUsedThisYear,
       });
       setAllowedCodes(new Set(employee.allowedShiftCodes ?? []));
+      const rawPrefs = (employee as Record<string, unknown>).dayCodePreferences as Record<string, string | null> | null;
+      setDayPrefs({ Mon: rawPrefs?.Mon ?? null, Tue: rawPrefs?.Tue ?? null, Wed: rawPrefs?.Wed ?? null, Thu: rawPrefs?.Thu ?? null, Fri: rawPrefs?.Fri ?? null });
+      setPrefersHA(!!((employee as Record<string, unknown>).prefersHeightAdjustableDesk));
     }
   }, [employee]);
 
@@ -160,6 +165,24 @@ export default function EmployeeDetail() {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetEmployeeQueryKey(id) });
           toast({ title: "Allowed shift codes saved" });
+        },
+      }
+    );
+  };
+
+  const handleSaveDayPrefs = () => {
+    updateEmployee.mutate(
+      {
+        id,
+        data: {
+          dayCodePreferences: dayPrefs as Record<string, string | null>,
+          prefersHeightAdjustableDesk: prefersHA,
+        } as Parameters<typeof updateEmployee.mutate>[0]["data"],
+      },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetEmployeeQueryKey(id) });
+          toast({ title: "Day preferences saved" });
         },
       }
     );
@@ -463,6 +486,54 @@ export default function EmployeeDetail() {
             <Button onClick={handleSaveAllowedCodes} disabled={updateEmployee.isPending} className="w-full">
               <Save className="h-4 w-4 mr-2" />
               Save Allowed Codes
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Day Preferences & Desk</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <p className="text-sm text-muted-foreground mb-3">
+                Set a preferred shift code per weekday. The planner will try to honour these. Leave blank to let the algorithm decide.
+              </p>
+              <div className="grid grid-cols-5 gap-3">
+                {(["Mon", "Tue", "Wed", "Thu", "Fri"] as const).map((day) => (
+                  <div key={day} className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">{day}</Label>
+                    <Select
+                      value={dayPrefs[day] ?? "none"}
+                      onValueChange={(v) => setDayPrefs({ ...dayPrefs, [day]: v === "none" ? null : v })}
+                    >
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue placeholder="—" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">—</SelectItem>
+                        {allShiftOptions.map((sc) => (
+                          <SelectItem key={sc.code} value={sc.code} className="text-xs font-mono">
+                            {sc.code}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <Separator />
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">Prefers height-adjustable desk</p>
+                <p className="text-xs text-muted-foreground">The planner will prefer assigning this employee a HA desk when available onsite.</p>
+              </div>
+              <Switch checked={prefersHA} onCheckedChange={setPrefersHA} />
+            </div>
+            <Button onClick={handleSaveDayPrefs} disabled={updateEmployee.isPending} className="w-full">
+              <Save className="h-4 w-4 mr-2" />
+              Save Day Preferences
             </Button>
           </CardContent>
         </Card>

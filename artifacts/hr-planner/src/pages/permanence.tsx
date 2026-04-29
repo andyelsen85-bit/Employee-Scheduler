@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, RefreshCw, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Layout } from "@/components/layout";
 
 interface WeekEntry {
   week: number;
@@ -119,6 +120,7 @@ export default function PermanencePage() {
   })();
 
   return (
+    <Layout>
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -153,11 +155,11 @@ export default function PermanencePage() {
           <div className="flex gap-4 text-sm text-muted-foreground">
             <div className="flex items-center gap-1.5">
               <div className="h-3 w-3 rounded-full bg-blue-500/70" />
-              Group 1 ({group1Emps.length} members)
+              Permanence 1 ({group1Emps.length} members)
             </div>
             <div className="flex items-center gap-1.5">
               <div className="h-3 w-3 rounded-full bg-purple-500/70" />
-              Group 2 ({group2Emps.length} members)
+              Permanence 2 ({group2Emps.length} members)
             </div>
             <div className="flex items-center gap-1.5">
               <div className="h-2.5 w-2.5 rounded-full bg-amber-400" />
@@ -171,8 +173,8 @@ export default function PermanencePage() {
                 <tr className="bg-muted/50 border-b">
                   <th className="px-4 py-2.5 text-left font-semibold w-20">Week</th>
                   <th className="px-4 py-2.5 text-left font-semibold w-44">Dates</th>
-                  <th className="px-4 py-2.5 text-left font-semibold">Group 1</th>
-                  <th className="px-4 py-2.5 text-left font-semibold">Group 2</th>
+                  <th className="px-4 py-2.5 text-left font-semibold">Permanence 1</th>
+                  <th className="px-4 py-2.5 text-left font-semibold">Permanence 2</th>
                 </tr>
               </thead>
               <tbody>
@@ -253,5 +255,6 @@ export default function PermanencePage() {
         </div>
       )}
     </div>
+    </Layout>
   );
 }

@@ -21,12 +21,15 @@ export type EmployeeRecord = {
   prmCounter: number;
   homeworkDaysUsedThisYear: number;
   preferredJlWeekday: number | null;
+  dayCodePreferences: Record<string, string>;
+  prefersHeightAdjustableDesk: boolean;
 };
 
 export type OfficeRecord = {
   id: number;
   deskCount: number;
   deskCodes: string[];
+  heightAdjustableDesks: string[];
   employeeIds: number[];
 };
 
@@ -477,8 +480,16 @@ export function generatePlanning(params: {
       const dailyTarget = (remainingHours[emp.id] ?? 0) / shiftDaysLeft;
 
       // Get pre-determined type for this week (weekly grouping)
-      const preferredType: "onsite" | "homework" | "cowork" =
+      let preferredType: "onsite" | "homework" | "cowork" =
         empDayTypeMap[emp.id]?.[dateStr] ?? "onsite";
+
+      // Day-of-week code preference overrides the weekly type if set and valid
+      const dayPrefCode = emp.dayCodePreferences?.[String(dayOfWeek)] ?? null;
+      const dayPrefCodeValid = dayPrefCode !== null && emp.allowedShiftCodes.includes(dayPrefCode);
+      const dayPrefType = dayPrefCodeValid ? (shiftCodes[dayPrefCode]?.type as "onsite" | "homework" | "cowork" | undefined) ?? null : null;
+      if (dayPrefType === "onsite" || dayPrefType === "homework" || dayPrefType === "cowork") {
+        preferredType = dayPrefType;
+      }
 
       // Find which office(s) this employee belongs to
       const empOffices = offices.filter((o) => o.employeeIds.includes(emp.id));
@@ -496,11 +507,16 @@ export function generatePlanning(params: {
           // First potential onsite day this week — pick from weekly pool
           for (const office of empOffices) {
             const weekUsed = deskUsedByWeekByOffice[weekStart]?.[office.id] ?? new Set();
-            const availableDesks = office.deskCodes.filter((dc) => !weekUsed.has(dc));
-            if (availableDesks.length > 0) {
+            const allAvailable = office.deskCodes.filter((dc) => !weekUsed.has(dc));
+            if (allAvailable.length > 0) {
               deskAvailableFromPool = true;
-              const randomIdx = Math.floor(Math.random() * availableDesks.length);
-              assignedDeskCode = availableDesks[randomIdx];
+              // Prefer height-adjustable desks if the employee has that preference
+              const haDeskPool = emp.prefersHeightAdjustableDesk
+                ? allAvailable.filter((dc) => (office.heightAdjustableDesks ?? []).includes(dc))
+                : [];
+              const candidatePool = haDeskPool.length > 0 ? haDeskPool : allAvailable;
+              const randomIdx = Math.floor(Math.random() * candidatePool.length);
+              assignedDeskCode = candidatePool[randomIdx];
               // Reserve desk for the whole week immediately
               (deskUsedByWeekByOffice[weekStart] ??= {})[office.id] ??= new Set();
               deskUsedByWeekByOffice[weekStart][office.id].add(assignedDeskCode);
@@ -529,39 +545,42 @@ export function generatePlanning(params: {
       let chosenCode: string | null = null;
       let actualDeskCode: string | null = null;
 
+      // Helper: pick code for a type, using day preference first if it matches
+      const pickCode = (type: "onsite" | "homework" | "cowork"): string | null => {
+        if (dayPrefCodeValid && dayPrefType === type) return dayPrefCode;
+        return bestCodeByTarget(type, emp.allowedShiftCodes, shiftCodes, dailyTarget);
+      };
+
       if (preferredType === "onsite") {
         if (canGoOnsite) {
-          chosenCode = bestCodeByTarget("onsite", emp.allowedShiftCodes, shiftCodes, dailyTarget);
+          chosenCode = pickCode("onsite");
           actualDeskCode = assignedDeskCode;
         } else {
-          // Desk not available — fallback to homework or cowork
           if (canHomework) {
-            chosenCode = bestCodeByTarget("homework", emp.allowedShiftCodes, shiftCodes, dailyTarget);
+            chosenCode = pickCode("homework");
           } else if (canCowork) {
-            chosenCode = bestCodeByTarget("cowork", emp.allowedShiftCodes, shiftCodes, dailyTarget);
+            chosenCode = pickCode("cowork");
           } else {
-            // No remote option at all, force onsite without desk code (shouldn't normally happen)
-            chosenCode = bestCodeByTarget("onsite", emp.allowedShiftCodes, shiftCodes, dailyTarget);
+            chosenCode = pickCode("onsite");
           }
         }
       } else if (preferredType === "homework") {
         if (canHomework) {
-          chosenCode = bestCodeByTarget("homework", emp.allowedShiftCodes, shiftCodes, dailyTarget);
+          chosenCode = pickCode("homework");
         } else if (canGoOnsite) {
-          chosenCode = bestCodeByTarget("onsite", emp.allowedShiftCodes, shiftCodes, dailyTarget);
+          chosenCode = pickCode("onsite");
           actualDeskCode = assignedDeskCode;
         } else if (canCowork) {
-          chosenCode = bestCodeByTarget("cowork", emp.allowedShiftCodes, shiftCodes, dailyTarget);
+          chosenCode = pickCode("cowork");
         }
       } else {
-        // cowork
         if (canCowork) {
-          chosenCode = bestCodeByTarget("cowork", emp.allowedShiftCodes, shiftCodes, dailyTarget);
+          chosenCode = pickCode("cowork");
         } else if (canGoOnsite) {
-          chosenCode = bestCodeByTarget("onsite", emp.allowedShiftCodes, shiftCodes, dailyTarget);
+          chosenCode = pickCode("onsite");
           actualDeskCode = assignedDeskCode;
         } else if (canHomework) {
-          chosenCode = bestCodeByTarget("homework", emp.allowedShiftCodes, shiftCodes, dailyTarget);
+          chosenCode = pickCode("homework");
         }
       }
 

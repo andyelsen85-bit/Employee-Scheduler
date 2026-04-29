@@ -7,6 +7,10 @@ export const officesTable = pgTable("offices", {
   name: text("name").notNull(),
   deskCount: integer("desk_count").notNull().default(1),
   deskCodes: jsonb("desk_codes").notNull().default([]),
+  heightAdjustableDesks: jsonb("height_adjustable_desks")
+    .notNull()
+    .$type<string[]>()
+    .default([]),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

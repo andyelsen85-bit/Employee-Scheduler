@@ -34,6 +34,12 @@ export const employeesTable = pgTable("employees", {
     .notNull()
     .default(0),
   preferredJlWeekday: integer("preferred_jl_weekday"),
+  dayCodePreferences: jsonb("day_code_preferences")
+    .$type<Record<string, string>>()
+    .default({}),
+  prefersHeightAdjustableDesk: boolean("prefers_height_adjustable_desk")
+    .notNull()
+    .default(false),
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

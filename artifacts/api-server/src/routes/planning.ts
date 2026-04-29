@@ -112,10 +112,11 @@ router.post("/planning/:year/:month/generate", async (req, res): Promise<void> =
   const shiftCodes: Record<string, { code: string; hours: number; type: string }> = {};
   for (const sc of shiftCodeRows) shiftCodes[sc.code] = sc;
 
-  const officesWithEmps = offices.map((o) => ({
+  const officesWithEmps: import("../lib/planner.js").OfficeRecord[] = offices.map((o) => ({
     id: o.id,
     deskCount: o.deskCount,
     deskCodes: (o.deskCodes as string[]) ?? [],
+    heightAdjustableDesks: (o.heightAdjustableDesks as string[]) ?? [],
     employeeIds: oeRows.filter((oe) => oe.officeId === o.id).map((oe) => oe.employeeId),
   }));
 
@@ -140,6 +141,8 @@ router.post("/planning/:year/:month/generate", async (req, res): Promise<void> =
       prmCounter: e.prmCounter,
       homeworkDaysUsedThisYear: e.homeworkDaysUsedThisYear,
       preferredJlWeekday: e.preferredJlWeekday ?? null,
+      dayCodePreferences: (e.dayCodePreferences as Record<string, string>) ?? {},
+      prefersHeightAdjustableDesk: e.prefersHeightAdjustableDesk ?? false,
     })),
     offices: officesWithEmps,
     shiftCodes,
@@ -284,6 +287,31 @@ router.put("/planning/entries/:id", async (req, res): Promise<void> => {
     requestedOff: row.requestedOff,
     notes: row.notes,
   });
+});
+
+// DELETE /api/planning/:year/:month — clear planning back to draft
+router.delete("/planning/:year/:month", async (req, res): Promise<void> => {
+  const year = parseInt(req.params.year, 10);
+  const month = parseInt(req.params.month, 10);
+  if (isNaN(year) || isNaN(month)) {
+    res.status(400).json({ error: "Invalid year/month" });
+    return;
+  }
+  const [pm] = await db
+    .select()
+    .from(planningMonthsTable)
+    .where(and(eq(planningMonthsTable.year, year), eq(planningMonthsTable.month, month)));
+  if (!pm) {
+    res.status(404).json({ error: "Planning not found" });
+    return;
+  }
+  await db.delete(planningEntriesTable).where(eq(planningEntriesTable.planningMonthId, pm.id));
+  const [updated] = await db
+    .update(planningMonthsTable)
+    .set({ status: "draft", generatedAt: null, confirmedAt: null })
+    .where(eq(planningMonthsTable.id, pm.id))
+    .returning();
+  res.json({ cleared: true, status: updated?.status ?? "draft" });
 });
 
 export default router;

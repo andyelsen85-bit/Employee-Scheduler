@@ -20,16 +20,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useState, KeyboardEvent } from "react";
-import { Plus, Pencil, Trash2, Building2, Users, KeyRound, X } from "lucide-react";
+import { Plus, Pencil, Trash2, Building2, Users, KeyRound, X, ArrowUpDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-type OfficeForm = { name: string; deskCount: number; deskCodes: string[] };
+type OfficeForm = { name: string; deskCount: number; deskCodes: string[]; heightAdjustableDesks: string[] };
 
 export default function OfficesConfig() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [dialog, setDialog] = useState<null | "create" | number>(null);
-  const [form, setForm] = useState<OfficeForm>({ name: "", deskCount: 10, deskCodes: [] });
+  const [form, setForm] = useState<OfficeForm>({ name: "", deskCount: 10, deskCodes: [], heightAdjustableDesks: [] });
   const [selectedEmployees, setSelectedEmployees] = useState<Set<number>>(new Set());
   const [newDeskCode, setNewDeskCode] = useState("");
 
@@ -46,17 +46,22 @@ export default function OfficesConfig() {
   const updateOfficeEmployees = useUpdateOfficeEmployees();
 
   const openCreate = () => {
-    setForm({ name: "", deskCount: 10, deskCodes: [] });
+    setForm({ name: "", deskCount: 10, deskCodes: [], heightAdjustableDesks: [] });
     setSelectedEmployees(new Set());
     setNewDeskCode("");
     setDialog("create");
   };
 
-  const openEdit = (office: { id: number; name: string; deskCount: number; deskCodes: string[]; employeeIds: number[] }) => {
-    setForm({ name: office.name, deskCount: office.deskCount, deskCodes: [...office.deskCodes] });
+  const openEdit = (office: { id: number; name: string; deskCount: number; deskCodes: string[]; heightAdjustableDesks?: string[]; employeeIds: number[] }) => {
+    setForm({ name: office.name, deskCount: office.deskCount, deskCodes: [...office.deskCodes], heightAdjustableDesks: [...(office.heightAdjustableDesks ?? [])] });
     setSelectedEmployees(new Set(office.employeeIds));
     setNewDeskCode("");
     setDialog(office.id);
+  };
+
+  const toggleHeightAdjustable = (code: string) => {
+    const ha = form.heightAdjustableDesks;
+    setForm({ ...form, heightAdjustableDesks: ha.includes(code) ? ha.filter(c => c !== code) : [...ha, code] });
   };
 
   const addDeskCode = () => {
@@ -67,7 +72,11 @@ export default function OfficesConfig() {
   };
 
   const removeDeskCode = (code: string) => {
-    setForm({ ...form, deskCodes: form.deskCodes.filter((c) => c !== code) });
+    setForm({
+      ...form,
+      deskCodes: form.deskCodes.filter((c) => c !== code),
+      heightAdjustableDesks: form.heightAdjustableDesks.filter((c) => c !== code),
+    });
   };
 
   const handleDeskCodeKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -79,12 +88,12 @@ export default function OfficesConfig() {
     const empIds = [...selectedEmployees];
     if (dialog === "create") {
       const office = await createOffice.mutateAsync({
-        data: { name: form.name, deskCount: form.deskCount, deskCodes: form.deskCodes, employeeIds: empIds },
+        data: { name: form.name, deskCount: form.deskCount, deskCodes: form.deskCodes, heightAdjustableDesks: form.heightAdjustableDesks, employeeIds: empIds },
       });
       await updateOfficeEmployees.mutateAsync({ id: office.id, data: { employeeIds: empIds } });
     } else if (typeof dialog === "number") {
       await Promise.all([
-        updateOffice.mutateAsync({ id: dialog, data: { name: form.name, deskCount: form.deskCount, deskCodes: form.deskCodes } }),
+        updateOffice.mutateAsync({ id: dialog, data: { name: form.name, deskCount: form.deskCount, deskCodes: form.deskCodes, heightAdjustableDesks: form.heightAdjustableDesks } }),
         updateOfficeEmployees.mutateAsync({ id: dialog, data: { employeeIds: empIds } }),
       ]);
     }
@@ -172,9 +181,15 @@ export default function OfficesConfig() {
                           <KeyRound className="h-3 w-3" /> Shared desk pool
                         </p>
                         <div className="flex flex-wrap gap-1">
-                          {office.deskCodes.map((dc) => (
-                            <Badge key={dc} variant="outline" className="font-mono text-[10px] px-1.5 h-5">{dc}</Badge>
-                          ))}
+                          {office.deskCodes.map((dc) => {
+                            const isHA = (office.heightAdjustableDesks ?? []).includes(dc);
+                            return (
+                              <Badge key={dc} variant="outline" className={`font-mono text-[10px] px-1.5 h-5 ${isHA ? "border-green-400 text-green-700" : ""}`}>
+                                {isHA && <ArrowUpDown className="h-2.5 w-2.5 mr-0.5 text-green-600" />}
+                                {dc}
+                              </Badge>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
@@ -245,15 +260,29 @@ export default function OfficesConfig() {
                   </Button>
                 </div>
                 {form.deskCodes.length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5 p-2 border rounded-md min-h-10">
-                    {form.deskCodes.map((dc) => (
-                      <span key={dc} className="inline-flex items-center gap-1 bg-muted rounded px-2 py-0.5 text-xs font-mono">
-                        {dc}
-                        <button onClick={() => removeDeskCode(dc)} className="text-muted-foreground hover:text-destructive">
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    ))}
+                  <div className="space-y-1.5 p-2 border rounded-md min-h-10">
+                    <p className="text-[10px] text-muted-foreground">Click ↕ to mark desk as height-adjustable</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {form.deskCodes.map((dc) => {
+                        const isHA = form.heightAdjustableDesks.includes(dc);
+                        return (
+                          <span key={dc} className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-mono border ${isHA ? "bg-green-50 border-green-300 text-green-800 dark:bg-green-950/30 dark:text-green-300" : "bg-muted border-transparent"}`}>
+                            <button
+                              type="button"
+                              onClick={() => toggleHeightAdjustable(dc)}
+                              title={isHA ? "Height-adjustable (click to unset)" : "Standard (click to mark HA)"}
+                              className="opacity-60 hover:opacity-100"
+                            >
+                              <ArrowUpDown className={`h-3 w-3 ${isHA ? "text-green-600" : ""}`} />
+                            </button>
+                            {dc}
+                            <button type="button" onClick={() => removeDeskCode(dc)} className="text-muted-foreground hover:text-destructive ml-0.5">
+                              <X className="h-3 w-3" />
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </div>
                   </div>
                 ) : (
                   <p className="text-xs text-muted-foreground/50 italic">No desk codes added yet</p>
