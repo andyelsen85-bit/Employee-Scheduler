@@ -10,6 +10,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { departmentsTable } from "./departments";
 
 export const employeesTable = pgTable("employees", {
   id: serial("id").primaryKey(),
@@ -40,6 +41,7 @@ export const employeesTable = pgTable("employees", {
   prefersHeightAdjustableDesk: boolean("prefers_height_adjustable_desk")
     .notNull()
     .default(false),
+  departmentId: integer("department_id").references(() => departmentsTable.id, { onDelete: "set null" }),
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

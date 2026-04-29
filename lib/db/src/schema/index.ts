@@ -1,3 +1,4 @@
+export * from "./departments";
 export * from "./employees";
 export * from "./offices";
 export * from "./shiftCodes";

@@ -1,9 +1,9 @@
 import { Layout } from "@/components/layout";
 import { useParams, Link } from "wouter";
-import { useGetMonthPlanning, getGetMonthPlanningQueryKey, useListEmployees, getListEmployeesQueryKey, useListShiftCodes, getListShiftCodesQueryKey, useGeneratePlanning, useGenerateEmployeePlanning, useConfirmPlanning, useUpdatePlanningEntry, useGetMonthlyConfig, getGetMonthlyConfigQueryKey, useListOffices, getListOfficesQueryKey } from "@workspace/api-client-react";
+import { useGetMonthPlanning, getGetMonthPlanningQueryKey, useListEmployees, getListEmployeesQueryKey, useListShiftCodes, getListShiftCodesQueryKey, useGeneratePlanning, useGenerateEmployeePlanning, useConfirmPlanning, useUpdatePlanningEntry, useGetMonthlyConfig, getGetMonthlyConfigQueryKey, useListOffices, getListOfficesQueryKey, useListDepartments, getListDepartmentsQueryKey } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Download, CheckCircle, Wand2, AlertCircle, Trash2, Lock, RefreshCw } from "lucide-react";
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +37,35 @@ export default function Planning() {
   const { data: offices } = useListOffices({
     query: { queryKey: getListOfficesQueryKey() }
   });
+  const { data: departments } = useListDepartments({
+    query: { queryKey: getListDepartmentsQueryKey() }
+  });
+
+  // Group employees: SPOC → Management → per dept (sorted by order) → ungrouped
+  type EmpRow = NonNullable<typeof employees>[number];
+  const buildGroups = (emps: EmpRow[], depts: NonNullable<typeof departments>) => {
+    const spoc = emps.filter(e => e.isSpoc);
+    const management = emps.filter(e => !e.isSpoc && e.isManagement);
+    const sortedDepts = [...depts].sort((a, b) => a.order - b.order);
+    const deptGroups = sortedDepts.map(d => ({
+      label: d.name,
+      emps: emps.filter(e => !e.isSpoc && !e.isManagement && (e as Record<string, unknown>).departmentId === d.id),
+    })).filter(g => g.emps.length > 0);
+    const assignedEmpIds = new Set([
+      ...spoc.map(e => e.id),
+      ...management.map(e => e.id),
+      ...deptGroups.flatMap(g => g.emps.map(e => e.id)),
+    ]);
+    const ungrouped = emps.filter(e => !assignedEmpIds.has(e.id));
+    const groups: { label: string | null; emps: EmpRow[] }[] = [];
+    if (spoc.length) groups.push({ label: "SPOC", emps: spoc });
+    if (management.length) groups.push({ label: "Management", emps: management });
+    for (const g of deptGroups) groups.push(g);
+    if (ungrouped.length) groups.push({ label: null, emps: ungrouped });
+    return groups;
+  };
+
+  const employeeGroups = employees && departments ? buildGroups(employees, departments) : null;
 
   // Shift-type → inline color style
   const SHIFT_TYPE_STYLE: Record<string, { bg: string; text: string; border: string }> = {
@@ -374,7 +403,19 @@ export default function Planning() {
                   </tr>
                 </thead>
                 <tbody>
-                  {employees.map(emp => {
+                  {(employeeGroups ?? [{ label: null, emps: employees ?? [] }]).map((group, gi) => (
+                    <Fragment key={`group-frag-${gi}`}>
+                      {group.label !== null && (
+                        <tr className="border-b bg-muted/40">
+                          <td
+                            colSpan={daysInMonth.length + 2}
+                            className="px-4 py-1 text-xs font-bold uppercase tracking-widest text-muted-foreground"
+                          >
+                            {group.label}
+                          </td>
+                        </tr>
+                      )}
+                      {group.emps.map(emp => {
                     const planned = getEmployeePlannedHours(emp.id);
                     const empOfficialHours = officialHours !== null
                       ? Math.round(officialHours * ((emp.contractPercent ?? 100) / 100) * 10) / 10
@@ -522,6 +563,8 @@ export default function Planning() {
                       </tr>
                     );
                   })}
+                    </Fragment>
+                  ))}
                 </tbody>
               </table>
             </div>

@@ -12,6 +12,7 @@ import Planning from "@/pages/planning";
 import Employees from "@/pages/employees";
 import EmployeeDetail from "@/pages/employee-detail";
 import OfficesConfig from "@/pages/config-offices";
+import DepartmentsConfig from "@/pages/config-departments";
 import ShiftCodesConfig from "@/pages/config-shift-codes";
 import HolidaysConfig from "@/pages/config-holidays";
 import MonthlyConfig from "@/pages/config-monthly";
@@ -33,6 +34,7 @@ function Router() {
       <Route path="/employees" component={Employees} />
       <Route path="/employees/:id" component={EmployeeDetail} />
       <Route path="/config/offices" component={OfficesConfig} />
+      <Route path="/config/departments" component={DepartmentsConfig} />
       <Route path="/config/shift-codes" component={ShiftCodesConfig} />
       <Route path="/config/holidays" component={HolidaysConfig} />
       <Route path="/config/monthly" component={MonthlyConfig} />

@@ -7,6 +7,8 @@ import {
   useUpdateEmployeeCounters,
   useListShiftCodes,
   getListShiftCodesQueryKey,
+  useListDepartments,
+  getListDepartmentsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -52,6 +54,9 @@ export default function EmployeeDetail() {
   const { data: shiftCodes } = useListShiftCodes({
     query: { queryKey: getListShiftCodesQueryKey() },
   });
+  const { data: departments } = useListDepartments({
+    query: { queryKey: getListDepartmentsQueryKey() },
+  });
 
   const updateEmployee = useUpdateEmployee();
   const updateCounters = useUpdateEmployeeCounters();
@@ -74,6 +79,7 @@ export default function EmployeeDetail() {
         permanenceGroup: employee.permanenceGroup ?? "",
         isSpoc: employee.isSpoc,
         isManagement: employee.isManagement,
+        departmentId: (employee as Record<string, unknown>).departmentId ?? null,
         notes: employee.notes ?? "",
       });
       setCounters({
@@ -279,6 +285,21 @@ export default function EmployeeDetail() {
                     <SelectItem value="none">None</SelectItem>
                     <SelectItem value="1">Permanence 1</SelectItem>
                     <SelectItem value="2">Permanence 2</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Department</Label>
+                <Select
+                  value={form.departmentId != null ? String(form.departmentId) : "none"}
+                  onValueChange={(v) => setForm({ ...form, departmentId: v === "none" ? null : Number(v) })}
+                >
+                  <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {departments?.map(d => (
+                      <SelectItem key={d.id} value={String(d.id)}>{d.name}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

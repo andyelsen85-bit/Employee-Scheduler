@@ -9,6 +9,24 @@ export interface HealthStatus {
   status: string;
 }
 
+export interface Department {
+  id: number;
+  name: string;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateDepartmentBody {
+  name: string;
+  order?: number;
+}
+
+export interface UpdateDepartmentBody {
+  name?: string;
+  order?: number;
+}
+
 export type EmployeeDayCodePreferencesItem = {
   /** 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri */
   day: number;
@@ -45,6 +63,8 @@ export interface Employee {
   dayCodePreferences?: EmployeeDayCodePreferencesItem[] | null;
   /** Whether the employee prefers a height-adjustable desk */
   prefersHeightAdjustableDesk?: boolean | null;
+  /** ID of the department this employee belongs to */
+  departmentId?: number | null;
   notes?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -66,6 +86,7 @@ export interface CreateEmployeeBody {
   holidayHoursRemaining?: number;
   overtimeHours?: number;
   homeworkDaysUsedThisYear?: number;
+  departmentId?: number | null;
   notes?: string | null;
 }
 
@@ -89,6 +110,7 @@ export interface UpdateEmployeeBody {
   isManagement?: boolean;
   dayCodePreferences?: UpdateEmployeeBodyDayCodePreferencesItem[] | null;
   prefersHeightAdjustableDesk?: boolean | null;
+  departmentId?: number | null;
   notes?: string | null;
 }
 

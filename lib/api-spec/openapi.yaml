@@ -8,6 +8,7 @@ servers:
     description: Base API path
 tags:
   - name: health
+  - name: departments
   - name: employees
   - name: offices
   - name: shiftCodes
@@ -30,6 +31,71 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # ── DEPARTMENTS ────────────────────────────────────────────────────────────
+  /departments:
+    get:
+      operationId: listDepartments
+      tags: [departments]
+      summary: List all departments
+      responses:
+        "200":
+          description: List of departments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Department"
+    post:
+      operationId: createDepartment
+      tags: [departments]
+      summary: Create a department
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDepartmentBody"
+      responses:
+        "201":
+          description: Created department
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Department"
+
+  /departments/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    put:
+      operationId: updateDepartment
+      tags: [departments]
+      summary: Update a department
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDepartmentBody"
+      responses:
+        "200":
+          description: Updated department
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Department"
+    delete:
+      operationId: deleteDepartment
+      tags: [departments]
+      summary: Delete a department
+      responses:
+        "204":
+          description: Deleted
 
   # ── EMPLOYEES ──────────────────────────────────────────────────────────────
   /employees:
@@ -693,6 +759,41 @@ components:
           type: string
       required: [status]
 
+    # DEPARTMENT
+    Department:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        order:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, name, order, createdAt, updatedAt]
+
+    CreateDepartmentBody:
+      type: object
+      properties:
+        name:
+          type: string
+        order:
+          type: integer
+      required: [name]
+
+    UpdateDepartmentBody:
+      type: object
+      properties:
+        name:
+          type: string
+        order:
+          type: integer
+
     # EMPLOYEE
     Employee:
       type: object
@@ -759,6 +860,10 @@ components:
           type: boolean
           nullable: true
           description: "Whether the employee prefers a height-adjustable desk"
+        departmentId:
+          type: integer
+          nullable: true
+          description: "ID of the department this employee belongs to"
         notes:
           type: string
           nullable: true
@@ -823,6 +928,9 @@ components:
           type: number
         homeworkDaysUsedThisYear:
           type: integer
+        departmentId:
+          type: integer
+          nullable: true
         notes:
           type: string
           nullable: true
@@ -880,6 +988,9 @@ components:
             required: [day, code]
         prefersHeightAdjustableDesk:
           type: boolean
+          nullable: true
+        departmentId:
+          type: integer
           nullable: true
         notes:
           type: string
