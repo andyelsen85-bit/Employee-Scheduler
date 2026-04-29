@@ -511,16 +511,23 @@ export default function Planning() {
                                   {/* Desk code with override popover */}
                                   <Popover>
                                     <PopoverTrigger asChild>
-                                      <button
-                                        className={`text-[9px] font-bold font-mono rounded px-1 py-0.5 leading-tight text-center border transition-colors hover:opacity-80 w-full ${hasDeskClash ? 'ring-1 ring-red-500 bg-red-50 text-red-700 border-red-300' : ''}`}
-                                        style={!hasDeskClash && entry.deskCode && deskColorMap.get(entry.deskCode)
-                                          ? { backgroundColor: deskColorMap.get(entry.deskCode)!.bg, color: deskColorMap.get(entry.deskCode)!.text, borderColor: deskColorMap.get(entry.deskCode)!.bg }
-                                          : !hasDeskClash ? { backgroundColor: '#f1f5f9', color: '#94a3b8', borderColor: '#e2e8f0' }
-                                          : undefined
-                                        }
-                                      >
-                                        {entry.deskCode || "—"}
-                                      </button>
+                                      {(() => {
+                                        const isOnsite = shiftTypeMap.get(entry.shiftCode!) === "onsite";
+                                        const missingDesk = isOnsite && !entry.deskCode;
+                                        return (
+                                          <button
+                                            className={`text-[9px] font-bold font-mono rounded px-1 py-0.5 leading-tight text-center border transition-colors hover:opacity-80 w-full ${hasDeskClash ? 'ring-1 ring-red-500 bg-red-50 text-red-700 border-red-300' : ''}`}
+                                            style={hasDeskClash ? undefined
+                                              : missingDesk ? { backgroundColor: '#7f1d1d', color: '#fef2f2', borderColor: '#991b1b' }
+                                              : entry.deskCode && deskColorMap.get(entry.deskCode)
+                                                ? { backgroundColor: deskColorMap.get(entry.deskCode)!.bg, color: deskColorMap.get(entry.deskCode)!.text, borderColor: deskColorMap.get(entry.deskCode)!.bg }
+                                                : { backgroundColor: '#f1f5f9', color: '#94a3b8', borderColor: '#e2e8f0' }
+                                            }
+                                          >
+                                            {entry.deskCode || "—"}
+                                          </button>
+                                        );
+                                      })()}
                                     </PopoverTrigger>
                                     <PopoverContent className="w-52 p-2" side="bottom">
                                       <div className="text-xs font-semibold text-muted-foreground mb-2">Desk Override</div>
