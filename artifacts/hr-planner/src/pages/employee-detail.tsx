@@ -24,7 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { useState, useEffect } from "react";
-import { ArrowLeft, Save, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Save, Plus, Trash2, Lock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri"];
@@ -60,6 +60,7 @@ export default function EmployeeDetail() {
 
   const [form, setForm] = useState<Record<string, unknown>>({});
   const [counters, setCounters] = useState<Record<string, number>>({});
+  const [allowedCodes, setAllowedCodes] = useState<Set<string>>(new Set());
   const [newTemplateName, setNewTemplateName] = useState("");
 
   useEffect(() => {
@@ -83,6 +84,7 @@ export default function EmployeeDetail() {
         overtimeHours: employee.overtimeHours,
         homeworkDaysUsedThisYear: employee.homeworkDaysUsedThisYear,
       });
+      setAllowedCodes(new Set(employee.allowedShiftCodes ?? []));
     }
   }, [employee]);
 
@@ -122,6 +124,39 @@ export default function EmployeeDetail() {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetEmployeeQueryKey(id) });
           toast({ title: "Counters updated" });
+        },
+      }
+    );
+  };
+
+  const FIXED_CODES = ["C0", "JL"];
+
+  const toggleCode = (code: string) => {
+    if (FIXED_CODES.includes(code)) return;
+    const next = new Set(allowedCodes);
+    if (next.has(code)) next.delete(code);
+    else next.add(code);
+    setAllowedCodes(next);
+  };
+
+  const handleSaveAllowedCodes = () => {
+    const codes = [...allowedCodes, ...FIXED_CODES.filter((c) => !allowedCodes.has(c))];
+    updateEmployee.mutate(
+      {
+        id,
+        data: {
+          ...form,
+          contractPercent: Number(form.contractPercent),
+          weeklyContractHours: Number(form.weeklyContractHours),
+          permanenceGroup: form.permanenceGroup ? Number(form.permanenceGroup) : null,
+          permanenceLevel: form.permanenceLevel ? Number(form.permanenceLevel) : null,
+          allowedShiftCodes: codes,
+        } as Parameters<typeof updateEmployee.mutate>[0]["data"],
+      },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetEmployeeQueryKey(id) });
+          toast({ title: "Allowed shift codes saved" });
         },
       }
     );
@@ -352,6 +387,75 @@ export default function EmployeeDetail() {
             </CardContent>
           </Card>
         </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Allowed Shift Codes</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <p className="text-sm text-muted-foreground">
+              Select which shift codes the auto-planner may assign to this employee.
+              C0 and JL are always included. The planner picks the best code from this
+              list each day to match the monthly hour target.
+            </p>
+
+            {(["onsite", "homework", "cowork"] as const).map((type) => {
+              const group = shiftCodes?.filter((sc) => sc.type === type) ?? [];
+              const labels: Record<string, string> = { onsite: "Onsite", homework: "Homework (TT)", cowork: "Cowork (CW)" };
+              return (
+                <div key={type}>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">{labels[type]}</div>
+                  <div className="flex flex-wrap gap-2">
+                    {group.map((sc) => {
+                      const selected = allowedCodes.has(sc.code);
+                      return (
+                        <button
+                          key={sc.code}
+                          type="button"
+                          onClick={() => toggleCode(sc.code)}
+                          className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-mono font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring
+                            ${selected
+                              ? "bg-primary text-primary-foreground border-primary hover:bg-primary/90"
+                              : "bg-background text-muted-foreground border-input hover:bg-muted"
+                            }`}
+                        >
+                          {sc.code}
+                          <span className={`text-xs font-sans ${selected ? "text-primary-foreground/70" : "text-muted-foreground/60"}`}>
+                            {sc.hours}h
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Always Included</div>
+              <div className="flex flex-wrap gap-2">
+                {["C0", "JL"].map((code) => {
+                  const sc = shiftCodes?.find((s) => s.code === code);
+                  return (
+                    <span
+                      key={code}
+                      className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-mono font-medium bg-muted text-muted-foreground border-input cursor-not-allowed opacity-70"
+                    >
+                      <Lock className="h-3 w-3" />
+                      {code}
+                      <span className="text-xs font-sans text-muted-foreground/60">{sc?.hours}h</span>
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+
+            <Button onClick={handleSaveAllowedCodes} disabled={updateEmployee.isPending} className="w-full">
+              <Save className="h-4 w-4 mr-2" />
+              Save Allowed Codes
+            </Button>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>
