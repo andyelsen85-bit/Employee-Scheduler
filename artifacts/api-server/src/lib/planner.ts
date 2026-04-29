@@ -151,12 +151,37 @@ function isHomeworkCode(code: string | null, shiftCodes: Record<string, ShiftCod
 /**
  * Assign JL (free day) slots to each employee for a given number of days.
  * Spreads evenly across the month (load-balanced) with random tiebreaking.
+ *
+ * JL days are never placed on a day that falls within an employee's permanence duty week,
+ * because the planner must keep the permanence employee on-site for their entire duty week.
  */
 function distributeJlDays(
   employees: EmployeeRecord[],
   workingDays: string[],
-  jlDays: number
+  jlDays: number,
+  permanenceAssignments?: Record<string, { g1: number | null; g2: number | null }>
 ): Record<number, Set<string>> {
+  // Build a fast lookup: employeeId → Set of "no-JL" working days (their permanence weeks)
+  const permanenceBlockedDays: Record<number, Set<string>> = {};
+  if (permanenceAssignments) {
+    for (const [weekStart, { g1, g2 }] of Object.entries(permanenceAssignments)) {
+      // Collect all working days that fall in this ISO week (Mon–Fri, same year)
+      for (let i = 0; i < 5; i++) {
+        const d = new Date(weekStart + "T12:00:00Z");
+        d.setUTCDate(d.getUTCDate() + i);
+        const dayStr = d.toISOString().split("T")[0];
+        if (g1 !== null) {
+          if (!permanenceBlockedDays[g1]) permanenceBlockedDays[g1] = new Set();
+          permanenceBlockedDays[g1].add(dayStr);
+        }
+        if (g2 !== null) {
+          if (!permanenceBlockedDays[g2]) permanenceBlockedDays[g2] = new Set();
+          permanenceBlockedDays[g2].add(dayStr);
+        }
+      }
+    }
+  }
+
   const jlAssignments: Record<number, Set<string>> = {};
   const jlCountByDate: Record<string, number> = {};
   for (const d of workingDays) jlCountByDate[d] = 0;
@@ -164,6 +189,11 @@ function distributeJlDays(
   for (const emp of employees) {
     jlAssignments[emp.id] = new Set();
     if (jlDays <= 0 || workingDays.length === 0) continue;
+
+    // Exclude days that fall in the employee's permanence duty week
+    const blocked = permanenceBlockedDays[emp.id] ?? new Set();
+    const eligibleDays = workingDays.filter((d) => !blocked.has(d));
+    const poolDays = eligibleDays.length > 0 ? eligibleDays : workingDays; // fallback if all blocked
 
     // Prefer placing pre-assigned JL on weekdays the employee already wants as JL.
     // This way the monthly JL "merges" into a preference-JL slot rather than adding
@@ -173,8 +203,8 @@ function distributeJlDays(
         .filter((p) => p.code === "JL")
         .map((p) => p.day)
     );
-    const preferredJlWorkingDays = workingDays.filter((d) => jlPrefWeekdays.has(getDayOfWeek0Mon(d)));
-    const otherWorkingDays = workingDays.filter((d) => !jlPrefWeekdays.has(getDayOfWeek0Mon(d)));
+    const preferredJlWorkingDays = poolDays.filter((d) => jlPrefWeekdays.has(getDayOfWeek0Mon(d)));
+    const otherWorkingDays = poolDays.filter((d) => !jlPrefWeekdays.has(getDayOfWeek0Mon(d)));
 
     // Within each tier, shuffle then stable-sort by load
     const shuffledPref = shuffle([...preferredJlWorkingDays]);
@@ -183,7 +213,7 @@ function distributeJlDays(
     shuffledOther.sort((a, b) => (jlCountByDate[a] ?? 0) - (jlCountByDate[b] ?? 0));
 
     const prioritized = [...shuffledPref, ...shuffledOther];
-    const count = Math.min(jlDays, workingDays.length);
+    const count = Math.min(jlDays, poolDays.length);
     const picked = prioritized.slice(0, count);
     for (const d of picked) {
       jlAssignments[emp.id].add(d);
@@ -284,6 +314,12 @@ export function generatePlanning(params: {
   contractualHours: number;
   requestedDaysOff: RequestedDayOff[];
   lockedEntries?: PlanningEntryInput[];
+  /**
+   * Pre-computed permanence assignments keyed by ISO week-start date string (Monday, "yyyy-MM-dd").
+   * When provided, the planner uses these instead of computing its own month-relative rotation.
+   * This ensures the planner is consistent with the Permanence page (ISO week numbers + manual overrides).
+   */
+  permanenceAssignments?: Record<string, { g1: number | null; g2: number | null }>;
 }): { entries: PlanningEntryInput[]; violations: PlanningViolation[] } {
   const {
     year,
@@ -296,6 +332,7 @@ export function generatePlanning(params: {
     contractualHours,
     requestedDaysOff,
     lockedEntries = [],
+    permanenceAssignments: externalPermanenceAssignments,
   } = params;
 
   // Build a set of locked slots: "employeeId-date" — these are skipped during generation
@@ -313,27 +350,34 @@ export function generatePlanning(params: {
     requestedOffMap[r.employeeId] = new Set(r.dates);
   }
 
-  // Permanence rotation — 1 employee per group per week, no level distinction
+  // Permanence rotation — 1 employee per group per week, no level distinction.
+  // If the caller provides pre-computed assignments (from the permanence page logic with
+  // ISO week numbers + manual overrides) we use those; otherwise fall back to internal rotation.
   const permanenceGroup1 = employees.filter((e) => e.permanenceGroup === 1);
   const permanenceGroup2 = employees.filter((e) => e.permanenceGroup === 2);
 
   const weekStarts = [...new Set(workingDays.map(getWeekNumber))];
-  const permanenceAssignments: Record<string, { g1: number | null; g2: number | null }> = {};
+  let permanenceAssignments: Record<string, { g1: number | null; g2: number | null }>;
 
-  function rotateAssign(group: EmployeeRecord[], weekIdx: number): number | null {
-    if (group.length === 0) return null;
-    return group[weekIdx % group.length].id;
+  if (externalPermanenceAssignments) {
+    permanenceAssignments = externalPermanenceAssignments;
+  } else {
+    permanenceAssignments = {};
+    function rotateAssign(group: EmployeeRecord[], weekIdx: number): number | null {
+      if (group.length === 0) return null;
+      return group[weekIdx % group.length].id;
+    }
+    weekStarts.forEach((ws, idx) => {
+      permanenceAssignments[ws] = {
+        g1: rotateAssign(permanenceGroup1, idx),
+        g2: rotateAssign(permanenceGroup2, idx),
+      };
+    });
   }
 
-  weekStarts.forEach((ws, idx) => {
-    permanenceAssignments[ws] = {
-      g1: rotateAssign(permanenceGroup1, idx),
-      g2: rotateAssign(permanenceGroup2, idx),
-    };
-  });
-
-  // JL day assignment (pre-configured from monthly config)
-  const jlAssignments = distributeJlDays(employees, workingDays, jlDays);
+  // JL day assignment (pre-configured from monthly config).
+  // Pass permanenceAssignments so JL days are never placed in an employee's permanence duty week.
+  const jlAssignments = distributeJlDays(employees, workingDays, jlDays, permanenceAssignments);
 
   // Per-employee contractual hours (scaled by contract %) with PRM counter compensation
   const empContractualHours: Record<number, number> = {};
@@ -426,7 +470,26 @@ export function generatePlanning(params: {
       neededJL = Math.max(neededJL, preferredJLdaysCount);
     }
 
-    const subDates = pickJlSubstitutionDates(candidateShiftDays, neededJL, jlPreferredWeekdays, avoidJlWeekdays, getExpectedHours);
+    // Exclude permanence-duty days from the pool available for JL substitution.
+    // The permanence employee is required on-site their entire duty week, so JL
+    // (substitution) days must not land in those weeks.
+    const permanenceBlockedForEmp: Set<string> = new Set();
+    for (const [ws, pa] of Object.entries(permanenceAssignments)) {
+      if (pa.g1 === emp.id || pa.g2 === emp.id) {
+        for (let i = 0; i < 5; i++) {
+          const d = new Date(ws + "T12:00:00Z");
+          d.setUTCDate(d.getUTCDate() + i);
+          permanenceBlockedForEmp.add(d.toISOString().split("T")[0]);
+        }
+      }
+    }
+    const jlEligibleDays = permanenceBlockedForEmp.size > 0
+      ? candidateShiftDays.filter((d) => !permanenceBlockedForEmp.has(d))
+      : candidateShiftDays;
+    // Also cap neededJL to how many eligible days exist (can't exceed pool size)
+    const cappedNeededJL = Math.min(neededJL, jlEligibleDays.length);
+
+    const subDates = pickJlSubstitutionDates(jlEligibleDays, cappedNeededJL, jlPreferredWeekdays, avoidJlWeekdays, getExpectedHours);
     jlSubstitutionDates[emp.id] = new Set(subDates);
 
     // Actual shift days exclude both pre-assigned JL and substitution JL
@@ -448,6 +511,15 @@ export function generatePlanning(params: {
       shiftDaysByWeek[wk].push(day);
     }
     const weekTypeMap = predetermineWeeklyTypes(Object.keys(shiftDaysByWeek), canHomework, canCowork);
+
+    // Force "onsite" for any week where this employee is the designated permanence person.
+    // This ensures the planner never generates a cowork/homework week that violates permanence duty.
+    for (const wk of Object.keys(weekTypeMap)) {
+      const pa = permanenceAssignments[wk];
+      if (pa && (pa.g1 === emp.id || pa.g2 === emp.id)) {
+        weekTypeMap[wk] = "onsite";
+      }
+    }
 
     // Build day → type lookup
     empDayTypeMap[emp.id] = {};
@@ -581,6 +653,10 @@ export function generatePlanning(params: {
       let preferredType: "onsite" | "homework" | "cowork" =
         empDayTypeMap[emp.id]?.[dateStr] ?? "onsite";
 
+      // Flag: this employee is on permanence duty this week — they must be onsite every shift day.
+      const weekPermanence = permanenceAssignments[weekStart];
+      const isOnPermanenceDuty = weekPermanence?.g1 === emp.id || weekPermanence?.g2 === emp.id;
+
       // Day-of-week code preference: rotate round-robin through all valid non-JL/non-C0
       // preferences for this weekday. Deduplicate by code first so duplicates don't skew
       // the rotation. The counter advances once per actual shift day reached here.
@@ -597,6 +673,13 @@ export function generatePlanning(params: {
       const dayPrefType = dayPrefCodeValid ? (shiftCodes[dayPrefCode]?.type as "onsite" | "homework" | "cowork" | undefined) ?? null : null;
       if (dayPrefType === "onsite" || dayPrefType === "homework" || dayPrefType === "cowork") {
         preferredType = dayPrefType;
+      }
+
+      // Permanence duty overrides everything — the employee must be onsite.
+      // Day preferences and week-type randomisation are both subordinate to this rule.
+      if (isOnPermanenceDuty && preferredType !== "onsite") {
+        preferredType = "onsite";
+        dayPrefCode = null; // suppress any non-onsite day preference
       }
 
       // Find which office(s) this employee belongs to

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq, and, ne, sql } from "drizzle-orm";
+import { eq, and, ne, isNotNull, sql } from "drizzle-orm";
 import {
   db,
   employeesTable,
@@ -11,6 +11,7 @@ import {
   publicHolidaysTable,
   planningMonthsTable,
   planningEntriesTable,
+  permanenceOverridesTable,
 } from "@workspace/db";
 import {
   GetMonthPlanningParams,
@@ -23,6 +24,72 @@ import {
 import { generatePlanning, type PlanningViolation } from "../lib/planner.js";
 
 const router = Router();
+
+// ── Permanence helpers (same logic as permanence.ts route) ──────────────────
+
+function getISOWeeksInYear(year: number): number {
+  const dec28 = new Date(year, 11, 28);
+  const jan1 = new Date(year, 0, 1);
+  const dayOfWeek = (jan1.getDay() + 6) % 7;
+  return Math.ceil((((dec28.getTime() - jan1.getTime()) / 86400000) + dayOfWeek + 1) / 7);
+}
+
+function getISOWeekStart(year: number, week: number): string {
+  const jan4 = new Date(year, 0, 4);
+  const dayOfWeek = (jan4.getDay() + 6) % 7;
+  const ws = new Date(jan4.getTime() - dayOfWeek * 86400000 + (week - 1) * 7 * 86400000);
+  return ws.toISOString().split("T")[0];
+}
+
+async function buildPermanenceAssignments(
+  year: number,
+  month: number
+): Promise<Record<string, { g1: number | null; g2: number | null }>> {
+  const permanenceEmployees = await db
+    .select({ id: employeesTable.id, permanenceGroup: employeesTable.permanenceGroup })
+    .from(employeesTable)
+    .where(isNotNull(employeesTable.permanenceGroup));
+
+  const overrides = await db
+    .select()
+    .from(permanenceOverridesTable)
+    .where(eq(permanenceOverridesTable.year, year));
+
+  const group1 = permanenceEmployees.filter((e) => e.permanenceGroup === 1);
+  const group2 = permanenceEmployees.filter((e) => e.permanenceGroup === 2);
+
+  function rotateAssign(group: typeof group1, weekIdx: number): number | null {
+    if (group.length === 0) return null;
+    return group[weekIdx % group.length].id;
+  }
+
+  const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
+  const monthEndDate = new Date(year, month, 0);
+  const monthEnd = monthEndDate.toISOString().split("T")[0];
+
+  const result: Record<string, { g1: number | null; g2: number | null }> = {};
+  const totalWeeks = getISOWeeksInYear(year);
+
+  for (let w = 1; w <= totalWeeks; w++) {
+    const ws = getISOWeekStart(year, w);
+    // Week end is ws + 6 days
+    const weDate = new Date(ws);
+    weDate.setDate(weDate.getDate() + 6);
+    const we = weDate.toISOString().split("T")[0];
+    // Only include weeks that overlap with this month
+    if (we < monthStart || ws > monthEnd) continue;
+
+    const g1Override = overrides.find((o) => o.weekNumber === w && o.group === 1);
+    const g2Override = overrides.find((o) => o.weekNumber === w && o.group === 2);
+
+    result[ws] = {
+      g1: g1Override ? g1Override.employeeId : rotateAssign(group1, w - 1),
+      g2: g2Override ? g2Override.employeeId : rotateAssign(group2, w - 1),
+    };
+  }
+
+  return result;
+}
 
 async function getOrCreateMonth(year: number, month: number) {
   const [existing] = await db
@@ -146,6 +213,10 @@ router.post("/planning/:year/:month/generate", async (req, res): Promise<void> =
       requestedOff: e.requestedOff,
     }));
 
+  // Build permanence assignments using ISO week numbers + manual overrides,
+  // matching exactly what the Permanence page shows.
+  const precomputedPermanence = await buildPermanenceAssignments(year, month);
+
   const { entries, violations } = generatePlanning({
     year,
     month,
@@ -181,6 +252,7 @@ router.post("/planning/:year/:month/generate", async (req, res): Promise<void> =
       dates: r.dates,
     })),
     lockedEntries,
+    permanenceAssignments: precomputedPermanence,
   });
 
   // Delete all non-locked entries, then insert newly generated ones
