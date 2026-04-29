@@ -139,6 +139,7 @@ router.post("/planning/:year/:month/generate", async (req, res): Promise<void> =
       isManagement: e.isManagement,
       prmCounter: e.prmCounter,
       homeworkDaysUsedThisYear: e.homeworkDaysUsedThisYear,
+      preferredJlWeekday: e.preferredJlWeekday ?? null,
     })),
     offices: officesWithEmps,
     shiftCodes,

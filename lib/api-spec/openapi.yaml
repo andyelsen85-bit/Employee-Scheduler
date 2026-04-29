@@ -707,6 +707,10 @@ components:
         homeworkDaysUsedThisYear:
           type: integer
           description: "TT days used — relevant for cross-border workers (max 35/year)"
+        preferredJlWeekday:
+          type: integer
+          nullable: true
+          description: "0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri. Preferred weekday for JL planning."
         notes:
           type: string
           nullable: true
@@ -814,6 +818,10 @@ components:
           type: boolean
         isManagement:
           type: boolean
+        preferredJlWeekday:
+          type: integer
+          nullable: true
+          description: "0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri. null to clear."
         notes:
           type: string
           nullable: true

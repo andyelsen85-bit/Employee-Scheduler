@@ -20,6 +20,7 @@ export type EmployeeRecord = {
   isManagement: boolean;
   prmCounter: number;
   homeworkDaysUsedThisYear: number;
+  preferredJlWeekday: number | null;
 };
 
 export type OfficeRecord = {
@@ -144,8 +145,8 @@ function isHomeworkCode(code: string | null, shiftCodes: Record<string, ShiftCod
 }
 
 /**
- * Distribute jlDays JL shifts per employee across working days.
- * Constraint: spread them evenly so no two employees share the same JL date if possible.
+ * Assign JL (free day) slots to each employee for a given number of days.
+ * Spreads evenly across the month (load-balanced) with random tiebreaking.
  */
 function distributeJlDays(
   employees: EmployeeRecord[],
@@ -161,13 +162,11 @@ function distributeJlDays(
     if (jlDays <= 0 || workingDays.length === 0) continue;
 
     const count = Math.min(jlDays, workingDays.length);
-    const sortedDays = [...workingDays].sort((a, b) => {
-      const diff = (jlCountByDate[a] ?? 0) - (jlCountByDate[b] ?? 0);
-      if (diff !== 0) return diff;
-      return a < b ? -1 : 1;
-    });
+    // Shuffle first, then stable-sort by load — randomness is preserved within equal-load buckets
+    const shuffled = shuffle([...workingDays]);
+    shuffled.sort((a, b) => (jlCountByDate[a] ?? 0) - (jlCountByDate[b] ?? 0));
 
-    const picked = sortedDays.slice(0, count);
+    const picked = shuffled.slice(0, count);
     for (const d of picked) {
       jlAssignments[emp.id].add(d);
       jlCountByDate[d] = (jlCountByDate[d] ?? 0) + 1;
@@ -175,6 +174,40 @@ function distributeJlDays(
   }
 
   return jlAssignments;
+}
+
+/**
+ * Pre-compute which shift days should become JL substitutions for an employee
+ * (to avoid overshooting target hours when all available codes exceed the daily target).
+ * Randomised across the month; respects the employee's preferred weekday if set.
+ */
+function pickJlSubstitutionDates(
+  candidateShiftDays: string[],
+  neededJL: number,
+  preferredWeekday: number | null
+): string[] {
+  if (neededJL <= 0 || candidateShiftDays.length === 0) return [];
+  const n = Math.min(neededJL, candidateShiftDays.length - 1); // keep at least 1 real shift day
+
+  let preferred: string[] = [];
+  let others: string[] = [];
+  if (preferredWeekday !== null) {
+    preferred = shuffle(candidateShiftDays.filter((d) => getDayOfWeek0Mon(d) === preferredWeekday));
+    others = shuffle(candidateShiftDays.filter((d) => getDayOfWeek0Mon(d) !== preferredWeekday));
+  } else {
+    others = shuffle([...candidateShiftDays]);
+  }
+
+  const result: string[] = [];
+  for (const d of preferred) {
+    if (result.length >= n) break;
+    result.push(d);
+  }
+  for (const d of others) {
+    if (result.length >= n) break;
+    result.push(d);
+  }
+  return result;
 }
 
 /**
@@ -279,23 +312,56 @@ export function generatePlanning(params: {
     };
   });
 
-  // JL day assignment
+  // JL day assignment (pre-configured from monthly config)
   const jlAssignments = distributeJlDays(employees, workingDays, jlDays);
 
-  // ── PHASE 1: Pre-determine day types per employee ──────────────────────────
+  // Per-employee contractual hours (scaled by contract %)
+  const empContractualHours: Record<number, number> = {};
+  for (const emp of employees) {
+    const pct = emp.contractPercent ?? 100;
+    empContractualHours[emp.id] = Math.round(contractualHours * (pct / 100) * 10) / 10;
+  }
+
+  // ── PHASE 1: Pre-determine day types + JL substitutions per employee ───────
   // For each employee, produce a shuffled sequence of "onsite" | "homework" | "cowork"
-  // for their shift days (working days - JL days - requested-off days).
-  // This ensures at least 50% onsite and introduces week-by-week variety.
+  // for their shift days (working days - pre-assigned JL - requested-off - JL substitutions).
+  // JL substitutions are spread randomly across the month (preferred weekday first if set).
 
   const empDayTypeSequence: Record<number, Array<"onsite" | "homework" | "cowork">> = {};
   const empShiftDays: Record<number, string[]> = {};
+  const jlSubstitutionDates: Record<number, Set<string>> = {};
 
   for (const emp of employees) {
     const jlDates = jlAssignments[emp.id] ?? new Set();
     const reqOffDates = requestedOffMap[emp.id] ?? new Set();
 
-    // Shift days = working days that are not JL and not requested-off
-    const shiftDays = workingDays.filter((d) => !jlDates.has(d) && !reqOffDates.has(d));
+    // Candidate shift days = working days that are not pre-assigned JL and not requested-off
+    const candidateShiftDays = workingDays.filter((d) => !jlDates.has(d) && !reqOffDates.has(d));
+
+    // Compute how many JL substitutions are needed based on min available code hours vs target
+    // Exclude JL (0h) and C0 (holiday) — these are special codes, not regular shift codes
+    const empTarget = empContractualHours[emp.id];
+    const regularCodes = emp.allowedShiftCodes.filter((c) => c !== "JL" && c !== "C0");
+    const minAllowedHours = regularCodes
+      .map((c) => shiftCodes[c]?.hours ?? 0)
+      .filter((h) => h > 0)
+      .reduce((min, h) => Math.min(min, h), Infinity);
+
+    let neededJL = 0;
+    if (isFinite(minAllowedHours) && minAllowedHours * candidateShiftDays.length > empTarget) {
+      neededJL = candidateShiftDays.length - Math.floor(empTarget / minAllowedHours);
+    }
+
+    // Randomly pick substitution JL positions, respecting preferred weekday
+    const subDates = pickJlSubstitutionDates(
+      candidateShiftDays,
+      neededJL,
+      emp.preferredJlWeekday ?? null
+    );
+    jlSubstitutionDates[emp.id] = new Set(subDates);
+
+    // Actual shift days exclude both pre-assigned JL and substitution JL
+    const shiftDays = candidateShiftDays.filter((d) => !jlSubstitutionDates[emp.id].has(d));
     empShiftDays[emp.id] = shiftDays;
 
     const canHomework =
@@ -317,22 +383,12 @@ export function generatePlanning(params: {
     for (const o of offices) deskUsedByDateByOffice[d][o.id] = new Set();
   }
 
-  // Per-employee contractual hours scaled by contract percentage
-  // e.g. contractualHours=160h, contractPercent=80 → 128h
-  const empContractualHours: Record<number, number> = {};
-  for (const emp of employees) {
-    const pct = emp.contractPercent ?? 100;
-    empContractualHours[emp.id] = Math.round(contractualHours * (pct / 100) * 10) / 10;
-  }
-
   // Running balance for hour accuracy
   const remainingHours: Record<number, number> = {};
   const remainingShiftDays: Record<number, number> = {};
   for (const emp of employees) {
-    const jlCount = jlAssignments[emp.id]?.size ?? 0;
-    const reqOffCount = (requestedOffMap[emp.id] ?? new Set()).size;
     remainingHours[emp.id] = empContractualHours[emp.id];
-    remainingShiftDays[emp.id] = workingDays.length - jlCount - reqOffCount;
+    remainingShiftDays[emp.id] = empShiftDays[emp.id].length;
   }
 
   const homeworkCountThisMonth: Record<number, number> = {};
@@ -383,8 +439,23 @@ export function generatePlanning(params: {
         continue;
       }
 
-      // JL day
+      // Pre-assigned JL day (from monthly config)
       if ((jlAssignments[emp.id] ?? new Set()).has(dateStr) && emp.allowedShiftCodes.includes("JL")) {
+        entries.push({
+          employeeId: emp.id,
+          date: dateStr,
+          shiftCode: "JL",
+          deskCode: null,
+          isPermanence: false,
+          permanenceLevel: null,
+          isLocked: false,
+          requestedOff: false,
+        });
+        continue;
+      }
+
+      // JL substitution day (pre-computed in Phase 1 to avoid hour overshoot)
+      if (jlSubstitutionDates[emp.id]?.has(dateStr)) {
         entries.push({
           employeeId: emp.id,
           date: dateStr,
@@ -490,38 +561,6 @@ export function generatePlanning(params: {
           actualDeskCode = assignedDeskCode;
         } else if (canHomework) {
           chosenCode = bestCodeByTarget("homework", emp.allowedShiftCodes, shiftCodes, dailyTarget);
-        }
-      }
-
-      // ── JL substitution ─────────────────────────────────────────────────────
-      // If the chosen code's hours exceed the daily target AND every code of that
-      // type also exceeds the target (no cheaper option), insert JL (0h) instead
-      // of spending hours we don't have — provided we can still cover the remaining
-      // budget in the days that follow.
-      if (chosenCode && shiftDaysLeft > 1) {
-        const chosenHours = shiftCodes[chosenCode]?.hours ?? 0;
-        if (chosenHours > 0 && chosenHours > dailyTarget) {
-          const codeType = shiftCodes[chosenCode]?.type;
-          // Is there ANY allowed code of this type that wouldn't overshoot?
-          const hasLowerOrEqualOption = emp.allowedShiftCodes.some(
-            (c) => shiftCodes[c]?.type === codeType && (shiftCodes[c]?.hours ?? 0) <= dailyTarget
-          );
-          if (!hasLowerOrEqualOption) {
-            // All codes for this type overshoot the daily target.
-            // Check if using JL today still lets future days cover remaining hours.
-            const maxHoursAnyAllowed = Math.max(
-              0,
-              ...emp.allowedShiftCodes
-                .filter((c) => (shiftCodes[c]?.hours ?? 0) > 0)
-                .map((c) => shiftCodes[c].hours)
-            );
-            const projectedTarget = (remainingHours[emp.id] ?? 0) / (shiftDaysLeft - 1);
-            if (projectedTarget <= maxHoursAnyAllowed) {
-              // Safe to skip today with JL — future days can absorb the hours
-              chosenCode = "JL";
-              actualDeskCode = null;
-            }
-          }
         }
       }
 

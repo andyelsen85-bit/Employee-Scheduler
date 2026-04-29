@@ -1,6 +1,6 @@
 import { Layout } from "@/components/layout";
 import { useParams, Link } from "wouter";
-import { useGetMonthPlanning, getGetMonthPlanningQueryKey, useListEmployees, getListEmployeesQueryKey, useListShiftCodes, getListShiftCodesQueryKey, useGeneratePlanning, useConfirmPlanning, useUpdatePlanningEntry, useGetMonthlyConfig, getGetMonthlyConfigQueryKey } from "@workspace/api-client-react";
+import { useGetMonthPlanning, getGetMonthPlanningQueryKey, useListEmployees, getListEmployeesQueryKey, useListShiftCodes, getListShiftCodesQueryKey, useGeneratePlanning, useConfirmPlanning, useUpdatePlanningEntry, useGetMonthlyConfig, getGetMonthlyConfigQueryKey, useListOffices, getListOfficesQueryKey } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Download, CheckCircle, Wand2, AlertCircle } from "lucide-react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend } from "date-fns";
@@ -32,6 +32,29 @@ export default function Planning() {
   const { data: monthlyConfig } = useGetMonthlyConfig(year, month, {
     query: { queryKey: getGetMonthlyConfigQueryKey(year, month) }
   });
+
+  const { data: offices } = useListOffices({
+    query: { queryKey: getListOfficesQueryKey() }
+  });
+
+  // Build a palette of colors per office and a map from desk code → color pair
+  const OFFICE_PALETTE = [
+    { bg: "#dbeafe", text: "#1d4ed8" },
+    { bg: "#dcfce7", text: "#15803d" },
+    { bg: "#f3e8ff", text: "#7e22ce" },
+    { bg: "#fed7aa", text: "#c2410c" },
+    { bg: "#fce7f3", text: "#be185d" },
+    { bg: "#e0f2fe", text: "#0369a1" },
+    { bg: "#fef9c3", text: "#a16207" },
+    { bg: "#ccfbf1", text: "#0f766e" },
+  ];
+  const deskColorMap = new Map<string, { bg: string; text: string }>();
+  if (offices) {
+    offices.forEach((office, idx) => {
+      const color = OFFICE_PALETTE[idx % OFFICE_PALETTE.length];
+      (office.deskCodes ?? []).forEach((code) => deskColorMap.set(code, color));
+    });
+  }
 
   const generatePlanning = useGeneratePlanning();
   const confirmPlanning = useConfirmPlanning();
@@ -250,13 +273,11 @@ export default function Planning() {
                           return (
                             <td key={day.toISOString()} className={`p-1 border-r text-center relative ${weekend ? 'bg-muted/20' : ''} ${hasViolation ? 'bg-destructive/5' : ''}`}>
                               {entry && entry.shiftCode && !weekend ? (
+                                <div className="flex flex-col gap-0.5">
                                 <Popover>
                                   <PopoverTrigger asChild>
                                     <button className={`px-2 py-1 text-xs font-semibold rounded w-full border border-transparent hover:border-border transition-colors ${hasViolation ? 'text-destructive ring-1 ring-destructive' : 'bg-primary/10 text-primary'}`}>
                                       {entry.shiftCode}
-                                      {entry.deskCode && (
-                                        <div className="text-[9px] font-mono text-muted-foreground leading-tight mt-0.5">{entry.deskCode}</div>
-                                      )}
                                     </button>
                                   </PopoverTrigger>
                                   <PopoverContent className="w-48 p-2" side="bottom">
@@ -283,6 +304,21 @@ export default function Planning() {
                                     </div>
                                   </PopoverContent>
                                 </Popover>
+                                {entry.deskCode && (() => {
+                                  const deskColor = deskColorMap.get(entry.deskCode);
+                                  return (
+                                    <div
+                                      className="text-[9px] font-bold font-mono rounded px-1 py-0.5 leading-tight text-center border"
+                                      style={deskColor
+                                        ? { backgroundColor: deskColor.bg, color: deskColor.text, borderColor: deskColor.bg }
+                                        : { backgroundColor: '#f1f5f9', color: '#64748b', borderColor: '#e2e8f0' }
+                                      }
+                                    >
+                                      {entry.deskCode}
+                                    </div>
+                                  );
+                                })()}
+                                </div>
                               ) : null}
                             </td>
                           );

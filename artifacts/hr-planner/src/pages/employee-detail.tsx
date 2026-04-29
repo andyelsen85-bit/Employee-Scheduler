@@ -76,6 +76,7 @@ export default function EmployeeDetail() {
         permanenceLevel: employee.permanenceLevel ?? "",
         isSpoc: employee.isSpoc,
         isManagement: employee.isManagement,
+        preferredJlWeekday: employee.preferredJlWeekday ?? "none",
         notes: employee.notes ?? "",
       });
       setCounters({
@@ -98,6 +99,7 @@ export default function EmployeeDetail() {
           weeklyContractHours: Number(form.weeklyContractHours),
           permanenceGroup: form.permanenceGroup ? Number(form.permanenceGroup) : null,
           permanenceLevel: form.permanenceLevel ? Number(form.permanenceLevel) : null,
+          preferredJlWeekday: form.preferredJlWeekday === "none" ? null : Number(form.preferredJlWeekday),
         } as Parameters<typeof updateEmployee.mutate>[0]["data"],
       },
       {
@@ -312,6 +314,24 @@ export default function EmployeeDetail() {
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Preferred JL Weekday</Label>
+                <Select
+                  value={String(form.preferredJlWeekday ?? "none")}
+                  onValueChange={(v) => setForm({ ...form, preferredJlWeekday: v })}
+                >
+                  <SelectTrigger><SelectValue placeholder="None (random)" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None (random)</SelectItem>
+                    <SelectItem value="0">Monday</SelectItem>
+                    <SelectItem value="1">Tuesday</SelectItem>
+                    <SelectItem value="2">Wednesday</SelectItem>
+                    <SelectItem value="3">Thursday</SelectItem>
+                    <SelectItem value="4">Friday</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">When JL days are inserted to reduce total hours, this weekday is preferred.</p>
               </div>
               <Separator />
               <div className="space-y-3">

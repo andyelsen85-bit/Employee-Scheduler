@@ -46,6 +46,12 @@ export const ListEmployeesResponseItem = zod.object({
     .describe(
       "TT days used — relevant for cross-border workers (max 35\/year)",
     ),
+  preferredJlWeekday: zod
+    .number()
+    .nullish()
+    .describe(
+      "0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri. Preferred weekday for JL planning.",
+    ),
   notes: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -107,6 +113,12 @@ export const GetEmployeeResponse = zod.object({
     .describe(
       "TT days used — relevant for cross-border workers (max 35\/year)",
     ),
+  preferredJlWeekday: zod
+    .number()
+    .nullish()
+    .describe(
+      "0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri. Preferred weekday for JL planning.",
+    ),
   notes: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -128,6 +140,10 @@ export const UpdateEmployeeBody = zod.object({
   permanenceLevel: zod.number().nullish(),
   isSpoc: zod.boolean().optional(),
   isManagement: zod.boolean().optional(),
+  preferredJlWeekday: zod
+    .number()
+    .nullish()
+    .describe("0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri. null to clear."),
   notes: zod.string().nullish(),
 });
 
@@ -159,6 +175,12 @@ export const UpdateEmployeeResponse = zod.object({
     .number()
     .describe(
       "TT days used — relevant for cross-border workers (max 35\/year)",
+    ),
+  preferredJlWeekday: zod
+    .number()
+    .nullish()
+    .describe(
+      "0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri. Preferred weekday for JL planning.",
     ),
   notes: zod.string().nullish(),
   createdAt: zod.coerce.date(),
@@ -211,6 +233,12 @@ export const UpdateEmployeeCountersResponse = zod.object({
     .number()
     .describe(
       "TT days used — relevant for cross-border workers (max 35\/year)",
+    ),
+  preferredJlWeekday: zod
+    .number()
+    .nullish()
+    .describe(
+      "0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri. Preferred weekday for JL planning.",
     ),
   notes: zod.string().nullish(),
   createdAt: zod.coerce.date(),

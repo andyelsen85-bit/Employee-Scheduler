@@ -33,6 +33,7 @@ export const employeesTable = pgTable("employees", {
   homeworkDaysUsedThisYear: integer("homework_days_used_this_year")
     .notNull()
     .default(0),
+  preferredJlWeekday: integer("preferred_jl_weekday"),
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
