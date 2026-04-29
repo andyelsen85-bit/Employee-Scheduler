@@ -5,11 +5,6 @@ import {
   getGetEmployeeQueryKey,
   useUpdateEmployee,
   useUpdateEmployeeCounters,
-  useListEmployeeTemplates,
-  getListEmployeeTemplatesQueryKey,
-  useCreateWeekTemplate,
-  useUpdateWeekTemplate,
-  useDeleteWeekTemplate,
   useListShiftCodes,
   getListShiftCodesQueryKey,
 } from "@workspace/api-client-react";
@@ -27,7 +22,6 @@ import { useState, useEffect } from "react";
 import { ArrowLeft, Save, Plus, Trash2, Lock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri"];
 const COUNTRY_OPTIONS = [
   { value: "lu", label: "Luxembourg" },
   { value: "be", label: "Belgium" },
@@ -35,6 +29,16 @@ const COUNTRY_OPTIONS = [
   { value: "fr", label: "France" },
   { value: "other", label: "Other" },
 ];
+
+const DAY_OPTIONS = [
+  { value: "0", label: "Monday" },
+  { value: "1", label: "Tuesday" },
+  { value: "2", label: "Wednesday" },
+  { value: "3", label: "Thursday" },
+  { value: "4", label: "Friday" },
+];
+
+type DayPref = { day: number; code: string };
 
 export default function EmployeeDetail() {
   const params = useParams();
@@ -45,24 +49,17 @@ export default function EmployeeDetail() {
   const { data: employee, isLoading } = useGetEmployee(id, {
     query: { queryKey: getGetEmployeeQueryKey(id), enabled: !!id },
   });
-  const { data: templates } = useListEmployeeTemplates(id, {
-    query: { queryKey: getListEmployeeTemplatesQueryKey(id), enabled: !!id },
-  });
   const { data: shiftCodes } = useListShiftCodes({
     query: { queryKey: getListShiftCodesQueryKey() },
   });
 
   const updateEmployee = useUpdateEmployee();
   const updateCounters = useUpdateEmployeeCounters();
-  const createTemplate = useCreateWeekTemplate();
-  const updateTemplate = useUpdateWeekTemplate();
-  const deleteTemplate = useDeleteWeekTemplate();
 
   const [form, setForm] = useState<Record<string, unknown>>({});
   const [counters, setCounters] = useState<Record<string, number>>({});
   const [allowedCodes, setAllowedCodes] = useState<Set<string>>(new Set());
-  const [newTemplateName, setNewTemplateName] = useState("");
-  const [dayPrefs, setDayPrefs] = useState<Record<string, string | null>>({ Mon: null, Tue: null, Wed: null, Thu: null, Fri: null });
+  const [dayPrefs, setDayPrefs] = useState<DayPref[]>([]);
   const [prefersHA, setPrefersHA] = useState(false);
 
   useEffect(() => {
@@ -75,10 +72,8 @@ export default function EmployeeDetail() {
         homeworkEligible: employee.homeworkEligible,
         coworkEligible: employee.coworkEligible,
         permanenceGroup: employee.permanenceGroup ?? "",
-        permanenceLevel: employee.permanenceLevel ?? "",
         isSpoc: employee.isSpoc,
         isManagement: employee.isManagement,
-        preferredJlWeekday: employee.preferredJlWeekday ?? "none",
         notes: employee.notes ?? "",
       });
       setCounters({
@@ -88,8 +83,12 @@ export default function EmployeeDetail() {
         homeworkDaysUsedThisYear: employee.homeworkDaysUsedThisYear,
       });
       setAllowedCodes(new Set(employee.allowedShiftCodes ?? []));
-      const rawPrefs = (employee as Record<string, unknown>).dayCodePreferences as Record<string, string | null> | null;
-      setDayPrefs({ Mon: rawPrefs?.Mon ?? null, Tue: rawPrefs?.Tue ?? null, Wed: rawPrefs?.Wed ?? null, Thu: rawPrefs?.Thu ?? null, Fri: rawPrefs?.Fri ?? null });
+      const rawPrefs = (employee as Record<string, unknown>).dayCodePreferences;
+      if (Array.isArray(rawPrefs)) {
+        setDayPrefs(rawPrefs as DayPref[]);
+      } else {
+        setDayPrefs([]);
+      }
       setPrefersHA(!!((employee as Record<string, unknown>).prefersHeightAdjustableDesk));
     }
   }, [employee]);
@@ -103,8 +102,8 @@ export default function EmployeeDetail() {
           contractPercent: Number(form.contractPercent),
           weeklyContractHours: Number(form.weeklyContractHours),
           permanenceGroup: form.permanenceGroup ? Number(form.permanenceGroup) : null,
-          permanenceLevel: form.permanenceLevel ? Number(form.permanenceLevel) : null,
-          preferredJlWeekday: form.preferredJlWeekday === "none" ? null : Number(form.preferredJlWeekday),
+          permanenceLevel: null,
+          preferredJlWeekday: null,
         } as Parameters<typeof updateEmployee.mutate>[0]["data"],
       },
       {
@@ -152,12 +151,6 @@ export default function EmployeeDetail() {
       {
         id,
         data: {
-          ...form,
-          contractPercent: Number(form.contractPercent),
-          weeklyContractHours: Number(form.weeklyContractHours),
-          permanenceGroup: form.permanenceGroup ? Number(form.permanenceGroup) : null,
-          permanenceLevel: form.permanenceLevel ? Number(form.permanenceLevel) : null,
-          preferredJlWeekday: form.preferredJlWeekday === "none" ? null : Number(form.preferredJlWeekday),
           allowedShiftCodes: codes,
         } as Parameters<typeof updateEmployee.mutate>[0]["data"],
       },
@@ -175,7 +168,7 @@ export default function EmployeeDetail() {
       {
         id,
         data: {
-          dayCodePreferences: dayPrefs as Record<string, string | null>,
+          dayCodePreferences: dayPrefs as unknown as Record<string, string>,
           prefersHeightAdjustableDesk: prefersHA,
         } as Parameters<typeof updateEmployee.mutate>[0]["data"],
       },
@@ -188,56 +181,19 @@ export default function EmployeeDetail() {
     );
   };
 
-  const handleCreateTemplate = () => {
-    if (!newTemplateName.trim()) return;
-    createTemplate.mutate(
-      {
-        id,
-        data: {
-          name: newTemplateName.trim(),
-          days: [0, 1, 2, 3, 4].map((d) => ({ dayOfWeek: d, shiftCode: null })),
-        },
-      },
-      {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getListEmployeeTemplatesQueryKey(id) });
-          setNewTemplateName("");
-          toast({ title: "Template created" });
-        },
-      }
-    );
+  const addDayPref = () => {
+    setDayPrefs([...dayPrefs, { day: 0, code: allShiftOptions[0]?.code ?? "JL" }]);
   };
 
-  const handleUpdateTemplateDay = (
-    templateId: number,
-    dayOfWeek: number,
-    shiftCode: string | null,
-    existingDays: Array<{ dayOfWeek: number; shiftCode: string | null }>
-  ) => {
-    const newDays = existingDays.map((d) =>
-      d.dayOfWeek === dayOfWeek ? { ...d, shiftCode } : d
+  const updateDayPref = (idx: number, field: "day" | "code", value: string) => {
+    const next = dayPrefs.map((p, i) =>
+      i === idx ? { ...p, [field]: field === "day" ? Number(value) : value } : p
     );
-    const tplName = templates?.find((t) => t.id === templateId)?.name ?? "";
-    updateTemplate.mutate(
-      { id: templateId, data: { name: tplName, days: newDays } },
-      {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getListEmployeeTemplatesQueryKey(id) });
-        },
-      }
-    );
+    setDayPrefs(next);
   };
 
-  const handleDeleteTemplate = (templateId: number) => {
-    deleteTemplate.mutate(
-      { id: templateId },
-      {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getListEmployeeTemplatesQueryKey(id) });
-          toast({ title: "Template deleted" });
-        },
-      }
-    );
+  const removeDayPref = (idx: number) => {
+    setDayPrefs(dayPrefs.filter((_, i) => i !== idx));
   };
 
   if (isLoading) {
@@ -315,36 +271,16 @@ export default function EmployeeDetail() {
                   <Input type="number" value={String(form.weeklyContractHours ?? 40)} onChange={(e) => setForm({ ...form, weeklyContractHours: e.target.value })} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label>Permanence Group</Label>
-                  <Select value={(form.permanenceGroup ?? "none") as string} onValueChange={(v) => setForm({ ...form, permanenceGroup: v === "none" ? null : v })}>
-                    <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      <SelectItem value="1">Group 1</SelectItem>
-                      <SelectItem value="2">Group 2</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
               <div className="space-y-1.5">
-                <Label>Preferred JL Weekday</Label>
-                <Select
-                  value={String(form.preferredJlWeekday ?? "none")}
-                  onValueChange={(v) => setForm({ ...form, preferredJlWeekday: v })}
-                >
-                  <SelectTrigger><SelectValue placeholder="None (random)" /></SelectTrigger>
+                <Label>Permanence Group</Label>
+                <Select value={(form.permanenceGroup ?? "none") as string} onValueChange={(v) => setForm({ ...form, permanenceGroup: v === "none" ? null : v })}>
+                  <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">None (random)</SelectItem>
-                    <SelectItem value="0">Monday</SelectItem>
-                    <SelectItem value="1">Tuesday</SelectItem>
-                    <SelectItem value="2">Wednesday</SelectItem>
-                    <SelectItem value="3">Thursday</SelectItem>
-                    <SelectItem value="4">Friday</SelectItem>
+                    <SelectItem value="none">None</SelectItem>
+                    <SelectItem value="1">Permanence 1</SelectItem>
+                    <SelectItem value="2">Permanence 2</SelectItem>
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground">When JL days are inserted to reduce total hours, this weekday is preferred.</p>
               </div>
               <Separator />
               <div className="space-y-3">
@@ -492,38 +428,58 @@ export default function EmployeeDetail() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Day Preferences & Desk</CardTitle>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Day Preferences & Desk</CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Add weekday/code favourites. The planner tries to honour them — use JL entries to set preferred free-day weekdays.
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={addDayPref}>
+                <Plus className="h-4 w-4 mr-1" />
+                Add
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div>
-              <p className="text-sm text-muted-foreground mb-3">
-                Set a preferred shift code per weekday. The planner will try to honour these. Leave blank to let the algorithm decide.
-              </p>
-              <div className="grid grid-cols-5 gap-3">
-                {(["Mon", "Tue", "Wed", "Thu", "Fri"] as const).map((day) => (
-                  <div key={day} className="space-y-1">
-                    <Label className="text-xs text-muted-foreground">{day}</Label>
-                    <Select
-                      value={dayPrefs[day] ?? "none"}
-                      onValueChange={(v) => setDayPrefs({ ...dayPrefs, [day]: v === "none" ? null : v })}
-                    >
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue placeholder="—" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">—</SelectItem>
-                        {allShiftOptions.map((sc) => (
-                          <SelectItem key={sc.code} value={sc.code} className="text-xs font-mono">
-                            {sc.code}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                ))}
-              </div>
+            {dayPrefs.length === 0 && (
+              <p className="text-sm text-muted-foreground italic text-center py-4">No preferences set — planner will decide freely.</p>
+            )}
+            <div className="space-y-2">
+              {dayPrefs.map((pref, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <Select value={String(pref.day)} onValueChange={(v) => updateDayPref(idx, "day", v)}>
+                    <SelectTrigger className="w-36 h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DAY_OPTIONS.map((d) => (
+                        <SelectItem key={d.value} value={d.value} className="text-xs">{d.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={pref.code} onValueChange={(v) => updateDayPref(idx, "code", v)}>
+                    <SelectTrigger className="w-36 h-8 text-xs font-mono">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {allShiftOptions.map((sc) => (
+                        <SelectItem key={sc.code} value={sc.code} className="text-xs font-mono">
+                          {sc.code} <span className="text-muted-foreground ml-1">{sc.hours}h</span>
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="JL" className="text-xs font-mono">JL <span className="text-muted-foreground ml-1">0h</span></SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0" onClick={() => removeDayPref(idx)}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
             </div>
+
             <Separator />
+
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium">Prefers height-adjustable desk</p>
@@ -531,84 +487,11 @@ export default function EmployeeDetail() {
               </div>
               <Switch checked={prefersHA} onCheckedChange={setPrefersHA} />
             </div>
+
             <Button onClick={handleSaveDayPrefs} disabled={updateEmployee.isPending} className="w-full">
               <Save className="h-4 w-4 mr-2" />
               Save Day Preferences
             </Button>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Week Templates</CardTitle>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Template name"
-                  value={newTemplateName}
-                  onChange={(e) => setNewTemplateName(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleCreateTemplate()}
-                  className="w-48"
-                />
-                <Button size="sm" onClick={handleCreateTemplate} disabled={!newTemplateName.trim()}>
-                  <Plus className="h-4 w-4 mr-1" />
-                  Add
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {(!templates || templates.length === 0) && (
-              <div className="text-center text-muted-foreground py-8">
-                No templates yet. Add a template to define default weekly shift patterns.
-              </div>
-            )}
-            {templates?.map((tpl) => {
-              const days = (tpl.days as Array<{ dayOfWeek: number; shiftCode: string | null }>) ?? [];
-              return (
-                <div key={tpl.id} className="border rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="font-medium">{tpl.name}</div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-destructive"
-                      onClick={() => handleDeleteTemplate(tpl.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <div className="grid grid-cols-5 gap-2">
-                    {DAY_NAMES.map((dayName, i) => {
-                      const day = days.find((d) => d.dayOfWeek === i) ?? { dayOfWeek: i, shiftCode: null };
-                      return (
-                        <div key={i} className="space-y-1">
-                          <Label className="text-xs text-muted-foreground">{dayName}</Label>
-                          <Select
-                            value={day.shiftCode ?? "none"}
-                            onValueChange={(v) =>
-                              handleUpdateTemplateDay(tpl.id, i, v === "none" ? null : v, days)
-                            }
-                          >
-                            <SelectTrigger className="h-8 text-xs">
-                              <SelectValue placeholder="—" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="none">—</SelectItem>
-                              {allShiftOptions.map((sc) => (
-                                <SelectItem key={sc.code} value={sc.code}>
-                                  {sc.code}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
           </CardContent>
         </Card>
       </div>
