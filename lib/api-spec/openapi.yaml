@@ -707,10 +707,23 @@ components:
         homeworkDaysUsedThisYear:
           type: integer
           description: "TT days used — relevant for cross-border workers (max 35/year)"
-        preferredJlWeekday:
-          type: integer
+        dayCodePreferences:
+          type: array
           nullable: true
-          description: "0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri. Preferred weekday for JL planning."
+          items:
+            type: object
+            properties:
+              day:
+                type: integer
+                description: "0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri"
+              code:
+                type: string
+            required: [day, code]
+          description: "Favourite shift codes per weekday used by the auto-planner"
+        prefersHeightAdjustableDesk:
+          type: boolean
+          nullable: true
+          description: "Whether the employee prefers a height-adjustable desk"
         notes:
           type: string
           nullable: true
@@ -818,10 +831,21 @@ components:
           type: boolean
         isManagement:
           type: boolean
-        preferredJlWeekday:
-          type: integer
+        dayCodePreferences:
+          type: array
           nullable: true
-          description: "0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri. null to clear."
+          items:
+            type: object
+            properties:
+              day:
+                type: integer
+                description: "0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri"
+              code:
+                type: string
+            required: [day, code]
+        prefersHeightAdjustableDesk:
+          type: boolean
+          nullable: true
         notes:
           type: string
           nullable: true

@@ -46,12 +46,19 @@ export const ListEmployeesResponseItem = zod.object({
     .describe(
       "TT days used — relevant for cross-border workers (max 35\/year)",
     ),
-  preferredJlWeekday: zod
-    .number()
+  dayCodePreferences: zod
+    .array(
+      zod.object({
+        day: zod.number().describe("0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri"),
+        code: zod.string(),
+      }),
+    )
     .nullish()
-    .describe(
-      "0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri. Preferred weekday for JL planning.",
-    ),
+    .describe("Favourite shift codes per weekday used by the auto-planner"),
+  prefersHeightAdjustableDesk: zod
+    .boolean()
+    .nullish()
+    .describe("Whether the employee prefers a height-adjustable desk"),
   notes: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -113,12 +120,19 @@ export const GetEmployeeResponse = zod.object({
     .describe(
       "TT days used — relevant for cross-border workers (max 35\/year)",
     ),
-  preferredJlWeekday: zod
-    .number()
+  dayCodePreferences: zod
+    .array(
+      zod.object({
+        day: zod.number().describe("0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri"),
+        code: zod.string(),
+      }),
+    )
     .nullish()
-    .describe(
-      "0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri. Preferred weekday for JL planning.",
-    ),
+    .describe("Favourite shift codes per weekday used by the auto-planner"),
+  prefersHeightAdjustableDesk: zod
+    .boolean()
+    .nullish()
+    .describe("Whether the employee prefers a height-adjustable desk"),
   notes: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -140,10 +154,15 @@ export const UpdateEmployeeBody = zod.object({
   permanenceLevel: zod.number().nullish(),
   isSpoc: zod.boolean().optional(),
   isManagement: zod.boolean().optional(),
-  preferredJlWeekday: zod
-    .number()
-    .nullish()
-    .describe("0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri. null to clear."),
+  dayCodePreferences: zod
+    .array(
+      zod.object({
+        day: zod.number().describe("0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri"),
+        code: zod.string(),
+      }),
+    )
+    .nullish(),
+  prefersHeightAdjustableDesk: zod.boolean().nullish(),
   notes: zod.string().nullish(),
 });
 
@@ -176,12 +195,19 @@ export const UpdateEmployeeResponse = zod.object({
     .describe(
       "TT days used — relevant for cross-border workers (max 35\/year)",
     ),
-  preferredJlWeekday: zod
-    .number()
+  dayCodePreferences: zod
+    .array(
+      zod.object({
+        day: zod.number().describe("0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri"),
+        code: zod.string(),
+      }),
+    )
     .nullish()
-    .describe(
-      "0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri. Preferred weekday for JL planning.",
-    ),
+    .describe("Favourite shift codes per weekday used by the auto-planner"),
+  prefersHeightAdjustableDesk: zod
+    .boolean()
+    .nullish()
+    .describe("Whether the employee prefers a height-adjustable desk"),
   notes: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -234,12 +260,19 @@ export const UpdateEmployeeCountersResponse = zod.object({
     .describe(
       "TT days used — relevant for cross-border workers (max 35\/year)",
     ),
-  preferredJlWeekday: zod
-    .number()
+  dayCodePreferences: zod
+    .array(
+      zod.object({
+        day: zod.number().describe("0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri"),
+        code: zod.string(),
+      }),
+    )
     .nullish()
-    .describe(
-      "0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri. Preferred weekday for JL planning.",
-    ),
+    .describe("Favourite shift codes per weekday used by the auto-planner"),
+  prefersHeightAdjustableDesk: zod
+    .boolean()
+    .nullish()
+    .describe("Whether the employee prefers a height-adjustable desk"),
   notes: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),

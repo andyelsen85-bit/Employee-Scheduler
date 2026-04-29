@@ -9,6 +9,12 @@ export interface HealthStatus {
   status: string;
 }
 
+export type EmployeeDayCodePreferencesItem = {
+  /** 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri */
+  day: number;
+  code: string;
+};
+
 export interface Employee {
   id: number;
   name: string;
@@ -35,8 +41,10 @@ export interface Employee {
   overtimeHours: number;
   /** TT days used — relevant for cross-border workers (max 35/year) */
   homeworkDaysUsedThisYear: number;
-  /** 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri. Preferred weekday for JL planning. */
-  preferredJlWeekday?: number | null;
+  /** Favourite shift codes per weekday used by the auto-planner */
+  dayCodePreferences?: EmployeeDayCodePreferencesItem[] | null;
+  /** Whether the employee prefers a height-adjustable desk */
+  prefersHeightAdjustableDesk?: boolean | null;
   notes?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -61,6 +69,12 @@ export interface CreateEmployeeBody {
   notes?: string | null;
 }
 
+export type UpdateEmployeeBodyDayCodePreferencesItem = {
+  /** 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri */
+  day: number;
+  code: string;
+};
+
 export interface UpdateEmployeeBody {
   name?: string;
   country?: string;
@@ -73,8 +87,8 @@ export interface UpdateEmployeeBody {
   permanenceLevel?: number | null;
   isSpoc?: boolean;
   isManagement?: boolean;
-  /** 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri. null to clear. */
-  preferredJlWeekday?: number | null;
+  dayCodePreferences?: UpdateEmployeeBodyDayCodePreferencesItem[] | null;
+  prefersHeightAdjustableDesk?: boolean | null;
   notes?: string | null;
 }
 

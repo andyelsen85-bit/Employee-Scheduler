@@ -90,7 +90,8 @@ router.put("/employees/:id", async (req, res): Promise<void> => {
   if (data.permanenceLevel !== undefined) updateData.permanenceLevel = data.permanenceLevel ?? null;
   if (data.isSpoc !== undefined) updateData.isSpoc = data.isSpoc;
   if (data.isManagement !== undefined) updateData.isManagement = data.isManagement;
-  if (data.preferredJlWeekday !== undefined) updateData.preferredJlWeekday = data.preferredJlWeekday ?? null;
+  if (data.dayCodePreferences !== undefined) updateData.dayCodePreferences = data.dayCodePreferences ?? null;
+  if (data.prefersHeightAdjustableDesk !== undefined) updateData.prefersHeightAdjustableDesk = data.prefersHeightAdjustableDesk ?? null;
   if (data.notes !== undefined) updateData.notes = data.notes ?? null;
 
   const [row] = await db
