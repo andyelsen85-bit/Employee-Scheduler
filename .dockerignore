@@ -1,0 +1,11 @@
+**/.git
+**/.gitignore
+**/node_modules
+**/.local
+**/dist
+**/attached_assets
+artifacts/mockup-sandbox
+.replit
+replit.nix
+*.md
+*.log

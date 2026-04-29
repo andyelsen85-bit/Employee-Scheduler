@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Users, Calendar, Home, Building2, Clock, CalendarDays, CalendarRange, Shield } from "lucide-react";
+import { Users, Calendar, Home, Building2, Clock, CalendarDays, CalendarRange, Shield, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { logout } from "@/hooks/use-auth";
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: Home },
@@ -45,6 +46,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
               );
             })}
           </nav>
+          <div className="px-3 pb-2">
+            <button
+              onClick={logout}
+              className="flex w-full items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors hover:bg-sidebar-accent/50 text-sidebar-foreground/60 hover:text-sidebar-foreground"
+            >
+              <LogOut className="h-5 w-5 shrink-0" />
+              Sign out
+            </button>
+          </div>
         </div>
       </div>
       <div className="flex-1 flex flex-col overflow-hidden">
