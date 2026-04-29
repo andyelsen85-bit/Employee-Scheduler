@@ -744,6 +744,18 @@ export function generatePlanning(params: {
           assignedDeskCode = existingWeekDesk;
           deskAvailableFromPool = assignedDeskCode !== null;
         } else {
+          // Only reserve a desk if the week type is onsite (or a day preference might override to onsite).
+          // Cowork weeks: the employee goes to an external coworking space — no office desk needed.
+          // This keeps the desk pool free for other employees that week.
+          const weekTypeInitial = empDayTypeMap[emp.id]?.[dateStr] ?? "onsite";
+          const hasOnsiteDayPrefToday = (emp.dayCodePreferences ?? []).some(
+            (p) => p.day === dayOfWeek && emp.allowedShiftCodes.includes(p.code) && shiftCodes[p.code]?.type === "onsite"
+          );
+          const shouldReserveDesk = weekTypeInitial !== "cowork" || hasOnsiteDayPrefToday;
+          if (!shouldReserveDesk) {
+            weeklyDeskByEmp[emp.id][weekStart] = null; // mark as "no desk this week" so we don't re-evaluate later
+          }
+          if (shouldReserveDesk)
           // First potential onsite day this week — pick from weekly pool
           for (const office of empOffices) {
             const weekUsed = deskUsedByWeekByOffice[weekStart]?.[office.id] ?? new Set();
@@ -870,10 +882,11 @@ export function generatePlanning(params: {
     }
   }
 
-  // ── PHASE 3: Second pass — promote homework/cowork to onsite where desks are free ──
+  // ── PHASE 3: Second pass — promote homework to onsite where desks are free ──
   // For each employee-week where a desk was reserved in Phase 2 but the week type was
-  // homework/cowork, upgrade those days to onsite to maximise office utilisation.
-  // Days with an explicit homework/cowork day-code preference are left unchanged (user intent).
+  // homework, upgrade those days to onsite to maximise office utilisation.
+  // Cowork entries are intentional (employee goes to external site) and are never touched.
+  // Days with an explicit homework day-code preference are also left unchanged (user intent).
   for (const emp of employees) {
     if (!emp.allowedShiftCodes.some((c) => shiftCodes[c]?.type === "onsite")) continue;
 
@@ -895,7 +908,9 @@ export function generatePlanning(params: {
         if (!entry.shiftCode) continue;
 
         const currentType = shiftCodes[entry.shiftCode]?.type;
-        if (currentType !== "homework" && currentType !== "cowork") continue;
+        // Only promote homework → onsite. Cowork is intentional (external coworking site):
+        // the employee chose to go there, so we must not silently override it with onsite.
+        if (currentType !== "homework") continue;
 
         // Respect explicit day preferences: if this weekday has a homework/cowork preference,
         // leave it as-is (the employee explicitly wants to stay remote that day).
