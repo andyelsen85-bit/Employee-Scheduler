@@ -302,7 +302,6 @@ export function generatePlanning(params: {
 
       const isJlDay = jlAssignments[emp.id]?.has(dateStr) ?? false;
       if (isJlDay && emp.allowedShiftCodes.includes("JL")) {
-        onsiteCountByDate[dateStr].add(emp.id);
         entries.push({
           employeeId: emp.id,
           date: dateStr,
@@ -312,7 +311,7 @@ export function generatePlanning(params: {
           isLocked: false,
           requestedOff: false,
         });
-        plannedHoursByEmployee[emp.id] = (plannedHoursByEmployee[emp.id] ?? 0) + HOLIDAY_HOURS;
+        plannedHoursByEmployee[emp.id] = (plannedHoursByEmployee[emp.id] ?? 0) + hoursForCode("JL", shiftCodes);
         continue;
       }
 

@@ -17,7 +17,7 @@ const SHIFT_CODES = [
   { code: "CW8", label: "Cowork 7h48", hours: 7.8, type: "cowork" },
   { code: "CW9", label: "Cowork 7h54", hours: 7.9, type: "cowork" },
   { code: "C0", label: "Holiday / Congé", hours: 7.6, type: "holiday" },
-  { code: "JL", label: "CCT-FHL (JL Day)", hours: 7.6, type: "jl" },
+  { code: "JL", label: "CCT-FHL (JL Day)", hours: 0, type: "jl" },
 ];
 
 const LU_PUBLIC_HOLIDAYS_2026 = [
