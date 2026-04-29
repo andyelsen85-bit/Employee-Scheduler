@@ -105,6 +105,8 @@ export interface Office {
   deskCount: number;
   /** Pool of shared desk codes available in this office */
   deskCodes: string[];
+  /** Subset of deskCodes that are height-adjustable */
+  heightAdjustableDesks?: string[];
   /** Employees eligible to use this office */
   employeeIds: number[];
 }
@@ -117,6 +119,7 @@ export interface CreateOfficeBody {
   name: string;
   deskCount: number;
   deskCodes?: string[];
+  heightAdjustableDesks?: string[];
   employeeIds?: number[];
 }
 
@@ -124,6 +127,7 @@ export interface UpdateOfficeBody {
   name?: string;
   deskCount?: number;
   deskCodes?: string[];
+  heightAdjustableDesks?: string[];
 }
 
 export interface ShiftCode {

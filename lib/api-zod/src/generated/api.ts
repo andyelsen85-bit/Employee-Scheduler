@@ -288,6 +288,10 @@ export const ListOfficesResponseItem = zod.object({
   deskCodes: zod
     .array(zod.string())
     .describe("Pool of shared desk codes available in this office"),
+  heightAdjustableDesks: zod
+    .array(zod.string())
+    .optional()
+    .describe("Subset of deskCodes that are height-adjustable"),
   employeeIds: zod
     .array(zod.number())
     .describe("Employees eligible to use this office"),
@@ -301,6 +305,7 @@ export const CreateOfficeBody = zod.object({
   name: zod.string(),
   deskCount: zod.number(),
   deskCodes: zod.array(zod.string()).optional(),
+  heightAdjustableDesks: zod.array(zod.string()).optional(),
   employeeIds: zod.array(zod.number()).optional(),
 });
 
@@ -312,6 +317,7 @@ export const UpdateOfficeBody = zod.object({
   name: zod.string().optional(),
   deskCount: zod.number().optional(),
   deskCodes: zod.array(zod.string()).optional(),
+  heightAdjustableDesks: zod.array(zod.string()).optional(),
 });
 
 export const UpdateOfficeResponse = zod.object({
@@ -321,6 +327,10 @@ export const UpdateOfficeResponse = zod.object({
   deskCodes: zod
     .array(zod.string())
     .describe("Pool of shared desk codes available in this office"),
+  heightAdjustableDesks: zod
+    .array(zod.string())
+    .optional()
+    .describe("Subset of deskCodes that are height-adjustable"),
   employeeIds: zod
     .array(zod.number())
     .describe("Employees eligible to use this office"),
@@ -348,6 +358,10 @@ export const UpdateOfficeEmployeesResponse = zod.object({
   deskCodes: zod
     .array(zod.string())
     .describe("Pool of shared desk codes available in this office"),
+  heightAdjustableDesks: zod
+    .array(zod.string())
+    .optional()
+    .describe("Subset of deskCodes that are height-adjustable"),
   employeeIds: zod
     .array(zod.number())
     .describe("Employees eligible to use this office"),

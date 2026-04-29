@@ -877,6 +877,11 @@ components:
           items:
             type: string
           description: "Pool of shared desk codes available in this office"
+        heightAdjustableDesks:
+          type: array
+          items:
+            type: string
+          description: "Subset of deskCodes that are height-adjustable"
         employeeIds:
           type: array
           items:
@@ -904,6 +909,10 @@ components:
           type: array
           items:
             type: string
+        heightAdjustableDesks:
+          type: array
+          items:
+            type: string
         employeeIds:
           type: array
           items:
@@ -918,6 +927,10 @@ components:
         deskCount:
           type: integer
         deskCodes:
+          type: array
+          items:
+            type: string
+        heightAdjustableDesks:
           type: array
           items:
             type: string

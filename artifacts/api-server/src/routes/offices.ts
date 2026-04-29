@@ -21,6 +21,7 @@ async function getOfficesWithEmployees() {
     name: o.name,
     deskCount: o.deskCount,
     deskCodes: (o.deskCodes as string[]) ?? [],
+    heightAdjustableDesks: (o.heightAdjustableDesks as string[]) ?? [],
     employeeIds: assignments.filter((a) => a.officeId === o.id).map((a) => a.employeeId),
   }));
 }
@@ -55,6 +56,7 @@ router.post("/offices", async (req, res): Promise<void> => {
     name: office.name,
     deskCount: office.deskCount,
     deskCodes: (office.deskCodes as string[]) ?? [],
+    heightAdjustableDesks: (office.heightAdjustableDesks as string[]) ?? [],
     employeeIds: parsed.data.employeeIds ?? [],
   });
 });
@@ -74,6 +76,7 @@ router.put("/offices/:id", async (req, res): Promise<void> => {
   if (parsed.data.name !== undefined) updateData.name = parsed.data.name;
   if (parsed.data.deskCount !== undefined) updateData.deskCount = parsed.data.deskCount;
   if (parsed.data.deskCodes !== undefined) updateData.deskCodes = parsed.data.deskCodes;
+  if (parsed.data.heightAdjustableDesks !== undefined) updateData.heightAdjustableDesks = parsed.data.heightAdjustableDesks;
 
   const [office] = await db
     .update(officesTable)
@@ -93,6 +96,7 @@ router.put("/offices/:id", async (req, res): Promise<void> => {
     name: office.name,
     deskCount: office.deskCount,
     deskCodes: (office.deskCodes as string[]) ?? [],
+    heightAdjustableDesks: (office.heightAdjustableDesks as string[]) ?? [],
     employeeIds: oeRows.map((a) => a.employeeId),
   });
 });
@@ -143,6 +147,7 @@ router.put("/offices/:id/employees", async (req, res): Promise<void> => {
     name: office.name,
     deskCount: office.deskCount,
     deskCodes: (office.deskCodes as string[]) ?? [],
+    heightAdjustableDesks: (office.heightAdjustableDesks as string[]) ?? [],
     employeeIds: empIds,
   });
 });

@@ -20,12 +20,16 @@ const MONTH_NAMES = [
   "July", "August", "September", "October", "November", "December",
 ];
 
-const YEARS = [2025, 2026, 2027];
+function getYearRange() {
+  const current = new Date().getFullYear();
+  return [current - 1, current, current + 1, current + 2];
+}
 
 export default function MonthlyConfig() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [filterYear, setFilterYear] = useState(2026);
+  const YEARS = getYearRange();
+  const [filterYear, setFilterYear] = useState(new Date().getFullYear());
   const [editingMonth, setEditingMonth] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<{ contractualHours: number; jlDays: number }>({
     contractualHours: 160,
