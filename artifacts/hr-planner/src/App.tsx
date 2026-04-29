@@ -1,26 +1,37 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 
-const queryClient = new QueryClient();
+import Dashboard from "@/pages/dashboard";
+import Planning from "@/pages/planning";
+import Employees from "@/pages/employees";
+import EmployeeDetail from "@/pages/employee-detail";
+import OfficesConfig from "@/pages/config-offices";
+import ShiftCodesConfig from "@/pages/config-shift-codes";
+import HolidaysConfig from "@/pages/config-holidays";
+import MonthlyConfig from "@/pages/config-monthly";
 
-function Home() {
-  return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-gray-50">
-      <div className="text-center">
-        <h1 className="text-2xl font-bold text-gray-900">Replit Agent is building...</h1>
-        <p className="mt-2 text-sm text-gray-600">Your app will appear here once it's ready.</p>
-      </div>
-    </div>
-  );
-}
+const queryClient = new QueryClient();
 
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={Home} />
+      <Route path="/" component={Dashboard} />
+      <Route path="/planning">
+        {() => {
+          const date = new Date();
+          return <Redirect to={`/planning/${date.getFullYear()}/${date.getMonth() + 1}`} />;
+        }}
+      </Route>
+      <Route path="/planning/:year/:month" component={Planning} />
+      <Route path="/employees" component={Employees} />
+      <Route path="/employees/:id" component={EmployeeDetail} />
+      <Route path="/config/offices" component={OfficesConfig} />
+      <Route path="/config/shift-codes" component={ShiftCodesConfig} />
+      <Route path="/config/holidays" component={HolidaysConfig} />
+      <Route path="/config/monthly" component={MonthlyConfig} />
       <Route component={NotFound} />
     </Switch>
   );

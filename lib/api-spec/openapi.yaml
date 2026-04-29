@@ -1,22 +1,28 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: HR Planner API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
-    description: Health operations
+  - name: employees
+  - name: offices
+  - name: shiftCodes
+  - name: templates
+  - name: monthlyConfig
+  - name: holidays
+  - name: planning
+  - name: dashboard
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +30,631 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # ── EMPLOYEES ──────────────────────────────────────────────────────────────
+  /employees:
+    get:
+      operationId: listEmployees
+      tags: [employees]
+      summary: List all employees
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Employee"
+    post:
+      operationId: createEmployee
+      tags: [employees]
+      summary: Create an employee
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEmployeeBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Employee"
+
+  /employees/{id}:
+    get:
+      operationId: getEmployee
+      tags: [employees]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Employee"
+    put:
+      operationId: updateEmployee
+      tags: [employees]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateEmployeeBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Employee"
+    delete:
+      operationId: deleteEmployee
+      tags: [employees]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /employees/{id}/counters:
+    put:
+      operationId: updateEmployeeCounters
+      tags: [employees]
+      summary: Update an employee's running counters
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCountersBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Employee"
+
+  # ── OFFICES ────────────────────────────────────────────────────────────────
+  /offices:
+    get:
+      operationId: listOffices
+      tags: [offices]
+      summary: List all offices with their employee assignments
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Office"
+    post:
+      operationId: createOffice
+      tags: [offices]
+      summary: Create an office
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOfficeBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Office"
+
+  /offices/{id}:
+    put:
+      operationId: updateOffice
+      tags: [offices]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOfficeBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Office"
+    delete:
+      operationId: deleteOffice
+      tags: [offices]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /offices/{id}/employees:
+    put:
+      operationId: updateOfficeEmployees
+      tags: [offices]
+      summary: Set which employees are eligible for this office
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                employeeIds:
+                  type: array
+                  items:
+                    type: integer
+              required: [employeeIds]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Office"
+
+  # ── SHIFT CODES ────────────────────────────────────────────────────────────
+  /shift-codes:
+    get:
+      operationId: listShiftCodes
+      tags: [shiftCodes]
+      summary: List all shift codes
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ShiftCode"
+    post:
+      operationId: createShiftCode
+      tags: [shiftCodes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateShiftCodeBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShiftCode"
+
+  /shift-codes/{code}:
+    put:
+      operationId: updateShiftCode
+      tags: [shiftCodes]
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateShiftCodeBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShiftCode"
+    delete:
+      operationId: deleteShiftCode
+      tags: [shiftCodes]
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
+  # ── WEEK TEMPLATES ─────────────────────────────────────────────────────────
+  /employees/{id}/templates:
+    get:
+      operationId: listEmployeeTemplates
+      tags: [templates]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WeekTemplate"
+    post:
+      operationId: createWeekTemplate
+      tags: [templates]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWeekTemplateBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeekTemplate"
+
+  /templates/{id}:
+    put:
+      operationId: updateWeekTemplate
+      tags: [templates]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWeekTemplateBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeekTemplate"
+    delete:
+      operationId: deleteWeekTemplate
+      tags: [templates]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # ── MONTHLY CONFIG ─────────────────────────────────────────────────────────
+  /monthly-configs:
+    get:
+      operationId: listMonthlyConfigs
+      tags: [monthlyConfig]
+      summary: List all monthly configurations
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MonthlyConfig"
+
+  /monthly-configs/{year}/{month}:
+    get:
+      operationId: getMonthlyConfig
+      tags: [monthlyConfig]
+      parameters:
+        - name: year
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: month
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonthlyConfig"
+    put:
+      operationId: upsertMonthlyConfig
+      tags: [monthlyConfig]
+      summary: Create or update monthly configuration
+      parameters:
+        - name: year
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: month
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertMonthlyConfigBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonthlyConfig"
+
+  # ── PUBLIC HOLIDAYS ────────────────────────────────────────────────────────
+  /holidays:
+    get:
+      operationId: listHolidays
+      tags: [holidays]
+      parameters:
+        - name: year
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PublicHoliday"
+    post:
+      operationId: createHoliday
+      tags: [holidays]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateHolidayBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicHoliday"
+
+  /holidays/{id}:
+    put:
+      operationId: updateHoliday
+      tags: [holidays]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateHolidayBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicHoliday"
+    delete:
+      operationId: deleteHoliday
+      tags: [holidays]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # ── PLANNING ───────────────────────────────────────────────────────────────
+  /planning/{year}/{month}:
+    get:
+      operationId: getMonthPlanning
+      tags: [planning]
+      summary: Get the full planning for a month (all employees × all days)
+      parameters:
+        - name: year
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: month
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonthPlanning"
+
+  /planning/{year}/{month}/generate:
+    post:
+      operationId: generatePlanning
+      tags: [planning]
+      summary: Generate a planning proposal for a month
+      parameters:
+        - name: year
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: month
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GeneratePlanningBody"
+      responses:
+        "200":
+          description: Planning generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonthPlanning"
+
+  /planning/{year}/{month}/confirm:
+    post:
+      operationId: confirmPlanning
+      tags: [planning]
+      summary: Confirm the planning for a month and update all counters
+      parameters:
+        - name: year
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: month
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Confirmed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonthPlanning"
+
+  /planning/entries/{id}:
+    put:
+      operationId: updatePlanningEntry
+      tags: [planning]
+      summary: Manually update a single planning entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePlanningEntryBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanningEntry"
+
+  # ── DASHBOARD ──────────────────────────────────────────────────────────────
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Overview stats — counters, homework usage, on-site rate, permanence schedule
+      parameters:
+        - name: year
+          in: query
+          schema:
+            type: integer
+        - name: month
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+# ── COMPONENTS ──────────────────────────────────────────────────────────────
 components:
   schemas:
     HealthStatus:
@@ -31,6 +662,578 @@ components:
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
+    # EMPLOYEE
+    Employee:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        country:
+          type: string
+          description: "lu | be | de | fr | other"
+        contractPercent:
+          type: number
+          description: "e.g. 100, 80, 50"
+        weeklyContractHours:
+          type: number
+          description: "Contracted hours per week"
+        homeworkEligible:
+          type: boolean
+        coworkEligible:
+          type: boolean
+        allowedShiftCodes:
+          type: array
+          items:
+            type: string
+          description: "Which codes this employee accepts"
+        permanenceGroup:
+          type: integer
+          nullable: true
+          description: "1 or 2, null if not in a permanence group"
+        permanenceLevel:
+          type: integer
+          nullable: true
+          description: "1 (primary) or 2 (escalation)"
+        isSpoc:
+          type: boolean
+        isManagement:
+          type: boolean
+        prmCounter:
+          type: number
+          description: "Running PRM balance in hours"
+        holidayHoursRemaining:
+          type: number
+          description: "Remaining holiday hours"
+        overtimeHours:
+          type: number
+        homeworkDaysUsedThisYear:
+          type: integer
+          description: "TT days used — relevant for cross-border workers (max 35/year)"
+        notes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - country
+        - contractPercent
+        - weeklyContractHours
+        - homeworkEligible
+        - coworkEligible
+        - allowedShiftCodes
+        - isSpoc
+        - isManagement
+        - prmCounter
+        - holidayHoursRemaining
+        - overtimeHours
+        - homeworkDaysUsedThisYear
+        - createdAt
+        - updatedAt
+
+    CreateEmployeeBody:
+      type: object
+      properties:
+        name:
+          type: string
+        country:
+          type: string
+        contractPercent:
+          type: number
+        weeklyContractHours:
+          type: number
+        homeworkEligible:
+          type: boolean
+        coworkEligible:
+          type: boolean
+        allowedShiftCodes:
+          type: array
+          items:
+            type: string
+        permanenceGroup:
+          type: integer
+          nullable: true
+        permanenceLevel:
+          type: integer
+          nullable: true
+        isSpoc:
+          type: boolean
+        isManagement:
+          type: boolean
+        prmCounter:
+          type: number
+        holidayHoursRemaining:
+          type: number
+        overtimeHours:
+          type: number
+        homeworkDaysUsedThisYear:
+          type: integer
+        notes:
+          type: string
+          nullable: true
+      required:
+        - name
+        - country
+        - contractPercent
+        - weeklyContractHours
+        - homeworkEligible
+        - coworkEligible
+        - allowedShiftCodes
+        - isSpoc
+        - isManagement
+
+    UpdateEmployeeBody:
+      type: object
+      properties:
+        name:
+          type: string
+        country:
+          type: string
+        contractPercent:
+          type: number
+        weeklyContractHours:
+          type: number
+        homeworkEligible:
+          type: boolean
+        coworkEligible:
+          type: boolean
+        allowedShiftCodes:
+          type: array
+          items:
+            type: string
+        permanenceGroup:
+          type: integer
+          nullable: true
+        permanenceLevel:
+          type: integer
+          nullable: true
+        isSpoc:
+          type: boolean
+        isManagement:
+          type: boolean
+        notes:
+          type: string
+          nullable: true
+
+    UpdateCountersBody:
+      type: object
+      properties:
+        prmCounter:
+          type: number
+        holidayHoursRemaining:
+          type: number
+        overtimeHours:
+          type: number
+        homeworkDaysUsedThisYear:
+          type: integer
+
+    # OFFICE
+    Office:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        deskCount:
+          type: integer
+        employeeIds:
+          type: array
+          items:
+            type: integer
+          description: "Employees eligible to use this office"
+      required: [id, name, deskCount, employeeIds]
+
+    CreateOfficeBody:
+      type: object
+      properties:
+        name:
+          type: string
+        deskCount:
+          type: integer
+        employeeIds:
+          type: array
+          items:
+            type: integer
+      required: [name, deskCount]
+
+    UpdateOfficeBody:
+      type: object
+      properties:
+        name:
+          type: string
+        deskCount:
+          type: integer
+
+    # SHIFT CODE
+    ShiftCode:
+      type: object
+      properties:
+        code:
+          type: string
+        label:
+          type: string
+        hours:
+          type: number
+        type:
+          type: string
+          description: "onsite | homework | cowork | holiday | jl | other"
+        isActive:
+          type: boolean
+      required: [code, label, hours, type, isActive]
+
+    CreateShiftCodeBody:
+      type: object
+      properties:
+        code:
+          type: string
+        label:
+          type: string
+        hours:
+          type: number
+        type:
+          type: string
+        isActive:
+          type: boolean
+      required: [code, label, hours, type]
+
+    UpdateShiftCodeBody:
+      type: object
+      properties:
+        label:
+          type: string
+        hours:
+          type: number
+        type:
+          type: string
+        isActive:
+          type: boolean
+
+    # WEEK TEMPLATE
+    WeekTemplate:
+      type: object
+      properties:
+        id:
+          type: integer
+        employeeId:
+          type: integer
+        name:
+          type: string
+        days:
+          type: array
+          items:
+            $ref: "#/components/schemas/TemplateDayEntry"
+      required: [id, employeeId, name, days]
+
+    TemplateDayEntry:
+      type: object
+      properties:
+        dayOfWeek:
+          type: integer
+          description: "0=Monday … 4=Friday"
+        shiftCode:
+          type: string
+          nullable: true
+          description: "null means off/free"
+      required: [dayOfWeek]
+
+    CreateWeekTemplateBody:
+      type: object
+      properties:
+        name:
+          type: string
+        days:
+          type: array
+          items:
+            $ref: "#/components/schemas/TemplateDayEntry"
+      required: [name, days]
+
+    # MONTHLY CONFIG
+    MonthlyConfig:
+      type: object
+      properties:
+        id:
+          type: integer
+        year:
+          type: integer
+        month:
+          type: integer
+        contractualHours:
+          type: number
+          description: "Total hours to plan this month (from PRMS doc)"
+        jlDates:
+          type: array
+          items:
+            type: string
+
+          description: "Dates of CCT-FHL JL days off this month"
+        notes:
+          type: string
+          nullable: true
+      required: [id, year, month, contractualHours, jlDates]
+
+    UpsertMonthlyConfigBody:
+      type: object
+      properties:
+        contractualHours:
+          type: number
+        jlDates:
+          type: array
+          items:
+            type: string
+
+        notes:
+          type: string
+          nullable: true
+      required: [contractualHours, jlDates]
+
+    # PUBLIC HOLIDAYS
+    PublicHoliday:
+      type: object
+      properties:
+        id:
+          type: integer
+        date:
+          type: string
+
+        name:
+          type: string
+        country:
+          type: string
+          description: "lu | be | de | fr | all"
+      required: [id, date, name, country]
+
+    CreateHolidayBody:
+      type: object
+      properties:
+        date:
+          type: string
+
+        name:
+          type: string
+        country:
+          type: string
+      required: [date, name, country]
+
+    # PLANNING
+    PlanningEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        employeeId:
+          type: integer
+        date:
+          type: string
+
+        shiftCode:
+          type: string
+          nullable: true
+        isPermanence:
+          type: boolean
+        permanenceLevel:
+          type: integer
+          nullable: true
+        isLocked:
+          type: boolean
+          description: "True when manually set or confirmed"
+        requestedOff:
+          type: boolean
+        notes:
+          type: string
+          nullable: true
+      required: [id, employeeId, date, isPermanence, isLocked, requestedOff]
+
+    MonthPlanning:
+      type: object
+      properties:
+        year:
+          type: integer
+        month:
+          type: integer
+        status:
+          type: string
+          description: "draft | confirmed"
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanningEntry"
+        violations:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanningViolation"
+        generatedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required: [year, month, status, entries, violations]
+
+    PlanningViolation:
+      type: object
+      properties:
+        date:
+          type: string
+
+        type:
+          type: string
+          description: "missing_spoc | missing_management | missing_perma1 | missing_perma2 | desk_overflow | prm_exceeded | homework_limit | insufficient_onsite | role_gap"
+        message:
+          type: string
+        employeeId:
+          type: integer
+          nullable: true
+      required: [date, type, message]
+
+    GeneratePlanningBody:
+      type: object
+      properties:
+        requestedDaysOff:
+          type: array
+          items:
+            $ref: "#/components/schemas/RequestedDayOff"
+          description: "Pre-collected employee day-off requests for this month"
+        overwriteExisting:
+          type: boolean
+          description: "If true, replace the existing draft entirely"
+      required: [requestedDaysOff]
+
+    RequestedDayOff:
+      type: object
+      properties:
+        employeeId:
+          type: integer
+        dates:
+          type: array
+          items:
+            type: string
+
+      required: [employeeId, dates]
+
+    UpdatePlanningEntryBody:
+      type: object
+      properties:
+        shiftCode:
+          type: string
+          nullable: true
+        isPermanence:
+          type: boolean
+        permanenceLevel:
+          type: integer
+          nullable: true
+        requestedOff:
+          type: boolean
+        notes:
+          type: string
+          nullable: true
+
+    # DASHBOARD
+    DashboardSummary:
+      type: object
+      properties:
+        year:
+          type: integer
+        month:
+          type: integer
+        planningStatus:
+          type: string
+        employeeStats:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmployeeStatSummary"
+        dailyOnsiteRate:
+          type: array
+          items:
+            $ref: "#/components/schemas/DailyOnsiteRate"
+        permanenceSchedule:
+          type: array
+          items:
+            $ref: "#/components/schemas/PermanenceWeek"
+        totalViolations:
+          type: integer
+      required:
+        - year
+        - month
+        - planningStatus
+        - employeeStats
+        - dailyOnsiteRate
+        - permanenceSchedule
+        - totalViolations
+
+    EmployeeStatSummary:
+      type: object
+      properties:
+        employeeId:
+          type: integer
+        name:
+          type: string
+        prmCounter:
+          type: number
+        holidayHoursRemaining:
+          type: number
+        homeworkDaysUsedThisYear:
+          type: integer
+        plannedOnsiteDays:
+          type: integer
+        plannedHomeworkDays:
+          type: integer
+        plannedCoworkDays:
+          type: integer
+        plannedHolidayDays:
+          type: integer
+        totalPlannedHours:
+          type: number
+      required:
+        - employeeId
+        - name
+        - prmCounter
+        - holidayHoursRemaining
+        - homeworkDaysUsedThisYear
+        - plannedOnsiteDays
+        - plannedHomeworkDays
+        - plannedCoworkDays
+        - plannedHolidayDays
+        - totalPlannedHours
+
+    DailyOnsiteRate:
+      type: object
+      properties:
+        date:
+          type: string
+
+        onsiteCount:
+          type: integer
+        totalDesks:
+          type: integer
+      required: [date, onsiteCount, totalDesks]
+
+    PermanenceWeek:
+      type: object
+      properties:
+        weekStart:
+          type: string
+
+        weekEnd:
+          type: string
+
+        group1Level1EmployeeId:
+          type: integer
+          nullable: true
+        group1Level2EmployeeId:
+          type: integer
+          nullable: true
+        group2Level1EmployeeId:
+          type: integer
+          nullable: true
+        group2Level2EmployeeId:
+          type: integer
+          nullable: true
+      required: [weekStart, weekEnd]
