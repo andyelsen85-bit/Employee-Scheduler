@@ -600,6 +600,20 @@ export function generatePlanning(params: {
       let chosenCode: string | null = null;
       let actualDeskCode: string | null = null;
 
+      // An explicit day preference overrides eligibility flags (homeworkEligible /
+      // coworkEligible). The employee or manager deliberately set this code for
+      // this weekday, so we honour it as long as the code is in allowedShiftCodes
+      // and the homework-day annual limit is not exceeded.
+      const dayPrefForcesHomework =
+        dayPrefCodeValid &&
+        dayPrefType === "homework" &&
+        emp.allowedShiftCodes.includes(dayPrefCode!) &&
+        homeworkUsedSoFar < HOMEWORK_DAY_LIMIT;
+      const dayPrefForcesCowork =
+        dayPrefCodeValid &&
+        dayPrefType === "cowork" &&
+        emp.allowedShiftCodes.includes(dayPrefCode!);
+
       // Helper: pick code for a type, using day preference first if it matches
       const pickCode = (type: "onsite" | "homework" | "cowork"): string | null => {
         if (dayPrefCodeValid && dayPrefType === type) return dayPrefCode;
@@ -620,7 +634,7 @@ export function generatePlanning(params: {
           }
         }
       } else if (preferredType === "homework") {
-        if (canHomework) {
+        if (canHomework || dayPrefForcesHomework) {
           chosenCode = pickCode("homework");
         } else if (canGoOnsite) {
           chosenCode = pickCode("onsite");
@@ -629,7 +643,7 @@ export function generatePlanning(params: {
           chosenCode = pickCode("cowork");
         }
       } else {
-        if (canCowork) {
+        if (canCowork || dayPrefForcesCowork) {
           chosenCode = pickCode("cowork");
         } else if (canGoOnsite) {
           chosenCode = pickCode("onsite");
