@@ -117,7 +117,12 @@ function bestCodeByTarget(
     const da = Math.abs(a.hours - targetHours);
     const db = Math.abs(b.hours - targetHours);
     if (Math.abs(da - db) > 0.001) return da - db;
-    return b.hours - a.hours; // prefer higher hours on tie
+    // On equal distance: prefer the code that stays at or below target to avoid overshoot
+    const aOver = a.hours > targetHours;
+    const bOver = b.hours > targetHours;
+    if (aOver && !bOver) return 1;
+    if (!aOver && bOver) return -1;
+    return b.hours - a.hours; // both same side: prefer higher
   });
 
   return candidates[0].code;
@@ -485,6 +490,38 @@ export function generatePlanning(params: {
           actualDeskCode = assignedDeskCode;
         } else if (canHomework) {
           chosenCode = bestCodeByTarget("homework", emp.allowedShiftCodes, shiftCodes, dailyTarget);
+        }
+      }
+
+      // ── JL substitution ─────────────────────────────────────────────────────
+      // If the chosen code's hours exceed the daily target AND every code of that
+      // type also exceeds the target (no cheaper option), insert JL (0h) instead
+      // of spending hours we don't have — provided we can still cover the remaining
+      // budget in the days that follow.
+      if (chosenCode && shiftDaysLeft > 1) {
+        const chosenHours = shiftCodes[chosenCode]?.hours ?? 0;
+        if (chosenHours > 0 && chosenHours > dailyTarget) {
+          const codeType = shiftCodes[chosenCode]?.type;
+          // Is there ANY allowed code of this type that wouldn't overshoot?
+          const hasLowerOrEqualOption = emp.allowedShiftCodes.some(
+            (c) => shiftCodes[c]?.type === codeType && (shiftCodes[c]?.hours ?? 0) <= dailyTarget
+          );
+          if (!hasLowerOrEqualOption) {
+            // All codes for this type overshoot the daily target.
+            // Check if using JL today still lets future days cover remaining hours.
+            const maxHoursAnyAllowed = Math.max(
+              0,
+              ...emp.allowedShiftCodes
+                .filter((c) => (shiftCodes[c]?.hours ?? 0) > 0)
+                .map((c) => shiftCodes[c].hours)
+            );
+            const projectedTarget = (remainingHours[emp.id] ?? 0) / (shiftDaysLeft - 1);
+            if (projectedTarget <= maxHoursAnyAllowed) {
+              // Safe to skip today with JL — future days can absorb the hours
+              chosenCode = "JL";
+              actualDeskCode = null;
+            }
+          }
         }
       }
 
