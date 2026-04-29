@@ -1,6 +1,6 @@
 import { Layout } from "@/components/layout";
 import { useParams, Link } from "wouter";
-import { useGetMonthPlanning, getGetMonthPlanningQueryKey, useListEmployees, getListEmployeesQueryKey, useListShiftCodes, getListShiftCodesQueryKey, useGeneratePlanning, useConfirmPlanning, useUpdatePlanningEntry } from "@workspace/api-client-react";
+import { useGetMonthPlanning, getGetMonthPlanningQueryKey, useListEmployees, getListEmployeesQueryKey, useListShiftCodes, getListShiftCodesQueryKey, useGeneratePlanning, useConfirmPlanning, useUpdatePlanningEntry, useGetMonthlyConfig, getGetMonthlyConfigQueryKey } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Download, CheckCircle, Wand2, AlertCircle } from "lucide-react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend } from "date-fns";
@@ -27,6 +27,10 @@ export default function Planning() {
 
   const { data: shiftCodes } = useListShiftCodes({
     query: { queryKey: getListShiftCodesQueryKey() }
+  });
+
+  const { data: monthlyConfig } = useGetMonthlyConfig(year, month, {
+    query: { queryKey: getGetMonthlyConfigQueryKey(year, month) }
   });
 
   const generatePlanning = useGeneratePlanning();
@@ -69,6 +73,23 @@ export default function Planning() {
     start: startOfMonth(date),
     end: endOfMonth(date)
   });
+
+  const shiftHoursMap = new Map<string, number>(
+    (shiftCodes ?? []).map(sc => [sc.code, sc.hours])
+  );
+
+  const officialHours = monthlyConfig?.contractualHours ?? null;
+
+  function getEmployeePlannedHours(empId: number): number {
+    if (!planning) return 0;
+    return planning.entries
+      .filter(e => e.employeeId === empId && e.shiftCode)
+      .reduce((sum, e) => sum + (shiftHoursMap.get(e.shiftCode!) ?? 0), 0);
+  }
+
+  const totalPlannedHours = employees
+    ? employees.reduce((sum, emp) => sum + getEmployeePlannedHours(emp.id), 0)
+    : 0;
 
   return (
     <Layout>
@@ -114,6 +135,41 @@ export default function Planning() {
           </div>
         </div>
 
+        {planning && employees && (
+          <div className="flex flex-wrap gap-3">
+            {employees.map(emp => {
+              const planned = getEmployeePlannedHours(emp.id);
+              const official = officialHours;
+              const diff = official !== null ? planned - official : null;
+              const over = diff !== null && diff > 0;
+              const under = diff !== null && diff < 0;
+              return (
+                <div key={emp.id} className="flex items-center gap-2 bg-card border rounded-lg px-4 py-2 text-sm">
+                  <span className="font-medium text-muted-foreground truncate max-w-[120px]">{emp.name}</span>
+                  <span className="font-bold">{planned.toFixed(1)} h</span>
+                  {official !== null && (
+                    <>
+                      <span className="text-muted-foreground">/ {official} h</span>
+                      <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${over ? 'bg-amber-100 text-amber-700' : under ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                        {diff !== null && diff >= 0 ? `+${diff.toFixed(1)}` : diff?.toFixed(1)} h
+                      </span>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+            {employees.length > 1 && (
+              <div className="flex items-center gap-2 bg-muted/50 border rounded-lg px-4 py-2 text-sm">
+                <span className="font-medium text-muted-foreground">Total</span>
+                <span className="font-bold">{totalPlannedHours.toFixed(1)} h</span>
+                {officialHours !== null && (
+                  <span className="text-muted-foreground">/ {(officialHours * employees.length).toFixed(0)} h</span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {planning?.violations && planning.violations.length > 0 && (
           <div className="bg-destructive/10 border border-destructive/20 text-destructive p-4 rounded-lg flex flex-col gap-2">
             <div className="flex items-center gap-2 font-bold">
@@ -157,59 +213,79 @@ export default function Planning() {
                         </th>
                       );
                     })}
+                    <th className="px-3 py-2 text-center min-w-[80px] sticky right-0 bg-muted/50 z-20 border-l shadow-[-1px_0_0_0_var(--color-border)]">
+                      <div className="font-semibold">Planned</div>
+                      {officialHours !== null && (
+                        <div className="text-muted-foreground font-normal text-[10px]">Official: {officialHours}h</div>
+                      )}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {employees.map(emp => (
-                    <tr key={emp.id} className="border-b hover:bg-muted/30 transition-colors">
-                      <td className="px-4 py-2 font-medium sticky left-0 bg-card z-10 border-r shadow-[1px_0_0_0_var(--color-border)] truncate">
-                        {emp.name}
-                      </td>
-                      {daysInMonth.map(day => {
-                        const dateStr = format(day, "yyyy-MM-dd");
-                        const entry = planning.entries.find(e => e.employeeId === emp.id && e.date.startsWith(dateStr));
-                        const weekend = isWeekend(day);
-                        const hasViolation = planning.violations.some(v => v.date.startsWith(dateStr) && v.employeeId === emp.id);
+                  {employees.map(emp => {
+                    const planned = getEmployeePlannedHours(emp.id);
+                    const diff = officialHours !== null ? planned - officialHours : null;
+                    const over = diff !== null && diff > 0;
+                    const under = diff !== null && diff < 0;
+                    return (
+                      <tr key={emp.id} className="border-b hover:bg-muted/30 transition-colors">
+                        <td className="px-4 py-2 font-medium sticky left-0 bg-card z-10 border-r shadow-[1px_0_0_0_var(--color-border)] truncate">
+                          {emp.name}
+                        </td>
+                        {daysInMonth.map(day => {
+                          const dateStr = format(day, "yyyy-MM-dd");
+                          const entry = planning.entries.find(e => e.employeeId === emp.id && e.date.startsWith(dateStr));
+                          const weekend = isWeekend(day);
+                          const hasViolation = planning.violations.some(v => v.date.startsWith(dateStr) && v.employeeId === emp.id);
 
-                        return (
-                          <td key={day.toISOString()} className={`p-1 border-r text-center relative ${weekend ? 'bg-muted/20' : ''} ${hasViolation ? 'bg-destructive/5' : ''}`}>
-                            {entry && entry.shiftCode && !weekend ? (
-                              <Popover>
-                                <PopoverTrigger asChild>
-                                  <button className={`px-2 py-1 text-xs font-semibold rounded w-full border border-transparent hover:border-border transition-colors ${hasViolation ? 'text-destructive ring-1 ring-destructive' : 'bg-primary/10 text-primary'}`}>
-                                    {entry.shiftCode}
-                                  </button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-48 p-2" side="bottom">
-                                  <div className="grid grid-cols-2 gap-1">
-                                    {shiftCodes?.map(sc => (
+                          return (
+                            <td key={day.toISOString()} className={`p-1 border-r text-center relative ${weekend ? 'bg-muted/20' : ''} ${hasViolation ? 'bg-destructive/5' : ''}`}>
+                              {entry && entry.shiftCode && !weekend ? (
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <button className={`px-2 py-1 text-xs font-semibold rounded w-full border border-transparent hover:border-border transition-colors ${hasViolation ? 'text-destructive ring-1 ring-destructive' : 'bg-primary/10 text-primary'}`}>
+                                      {entry.shiftCode}
+                                    </button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-48 p-2" side="bottom">
+                                    <div className="grid grid-cols-2 gap-1">
+                                      {shiftCodes?.map(sc => (
+                                        <Button 
+                                          key={sc.code} 
+                                          size="sm" 
+                                          variant={sc.code === entry.shiftCode ? "default" : "outline"}
+                                          onClick={() => handleUpdateShift(entry.id, sc.code)}
+                                          className="text-xs"
+                                        >
+                                          {sc.code}
+                                        </Button>
+                                      ))}
                                       <Button 
-                                        key={sc.code} 
                                         size="sm" 
-                                        variant={sc.code === entry.shiftCode ? "default" : "outline"}
-                                        onClick={() => handleUpdateShift(entry.id, sc.code)}
-                                        className="text-xs"
+                                        variant="outline" 
+                                        className="text-destructive text-xs col-span-2"
+                                        onClick={() => handleUpdateShift(entry.id, "")}
                                       >
-                                        {sc.code}
+                                        Clear
                                       </Button>
-                                    ))}
-                                    <Button 
-                                      size="sm" 
-                                      variant="outline" 
-                                      className="text-destructive text-xs col-span-2"
-                                      onClick={() => handleUpdateShift(entry.id, "")}
-                                    >
-                                      Clear
-                                    </Button>
-                                  </div>
-                                </PopoverContent>
-                              </Popover>
-                            ) : null}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
+                              ) : null}
+                            </td>
+                          );
+                        })}
+                        <td className="px-3 py-2 text-center sticky right-0 bg-card z-10 border-l shadow-[-1px_0_0_0_var(--color-border)]">
+                          <div className="font-bold text-sm">{planned.toFixed(1)}h</div>
+                          {diff !== null && (
+                            <div className={`text-xs font-semibold ${over ? 'text-amber-600' : under ? 'text-blue-600' : 'text-green-600'}`}>
+                              {diff >= 0 ? `+${diff.toFixed(1)}` : diff.toFixed(1)}h
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
