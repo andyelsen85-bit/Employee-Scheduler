@@ -717,12 +717,8 @@ export function generatePlanning(params: {
         preferredType = dayPrefType;
       }
 
-      // Permanence duty overrides everything — the employee must be onsite.
-      // Day preferences and week-type randomisation are both subordinate to this rule.
-      if (isOnPermanenceDuty && preferredType !== "onsite") {
-        preferredType = "onsite";
-        dayPrefCode = null; // suppress any non-onsite day preference
-      }
+      // Permanence duty does NOT force onsite — the employee's normal week type
+      // and day preferences still apply even when on permanence duty.
 
       // Find which office(s) this employee belongs to, reordered so the
       // weekly-preferred office comes first (satellite rotation).
