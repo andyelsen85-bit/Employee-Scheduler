@@ -376,11 +376,10 @@ export function generatePlanning(params: {
       ? totalExpectedIfAllShift / candidateShiftDays.length
       : (typicalShiftHours ?? 8);
 
-    let neededJL = 0;
-    if (weightedAvgHours > 0 && totalExpectedIfAllShift > empTarget) {
-      neededJL = candidateShiftDays.length - Math.ceil(empTarget / weightedAvgHours);
-    }
-    neededJL = Math.max(0, neededJL);
+    // Derive preferred JL weekdays from day code preferences (entries where code === "JL")
+    const jlPreferredWeekdays = (emp.dayCodePreferences ?? [])
+      .filter((p) => p.code === "JL")
+      .map((p) => p.day);
 
     // Weekdays that have a non-JL/non-C0 code preference — protect from JL selection
     const avoidJlWeekdays = new Set(
@@ -389,10 +388,21 @@ export function generatePlanning(params: {
         .map((p) => p.day)
     );
 
-    // Derive preferred JL weekdays from day code preferences (entries where code === "JL")
-    const jlPreferredWeekdays = (emp.dayCodePreferences ?? [])
-      .filter((p) => p.code === "JL")
-      .map((p) => p.day);
+    let neededJL = 0;
+    if (weightedAvgHours > 0 && totalExpectedIfAllShift > empTarget) {
+      neededJL = candidateShiftDays.length - Math.ceil(empTarget / weightedAvgHours);
+    }
+    neededJL = Math.max(0, neededJL);
+
+    // Guarantee ALL preferred-JL weekdays become JL — day preferences take priority over
+    // the hours calculation. Any resulting hour shortfall is absorbed by the PRM counter.
+    if (jlPreferredWeekdays.length > 0) {
+      const preferredJLdaysCount = candidateShiftDays.filter(
+        (d) => jlPreferredWeekdays.includes(getDayOfWeek0Mon(d))
+      ).length;
+      neededJL = Math.max(neededJL, preferredJLdaysCount);
+    }
+
     const subDates = pickJlSubstitutionDates(candidateShiftDays, neededJL, jlPreferredWeekdays, avoidJlWeekdays, getExpectedHours);
     jlSubstitutionDates[emp.id] = new Set(subDates);
 

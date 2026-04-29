@@ -468,7 +468,6 @@ export default function EmployeeDetail() {
                           {sc.code} <span className="text-muted-foreground ml-1">{sc.hours}h</span>
                         </SelectItem>
                       ))}
-                      <SelectItem value="JL" className="text-xs font-mono">JL <span className="text-muted-foreground ml-1">0h</span></SelectItem>
                     </SelectContent>
                   </Select>
                   <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0" onClick={() => removeDayPref(idx)}>
