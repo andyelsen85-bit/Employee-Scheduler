@@ -140,6 +140,19 @@ function hoursForCode(code: string | null, shiftCodes: Record<string, ShiftCodeR
   return shiftCodes[code]?.hours ?? 0;
 }
 
+/** Like hoursForCode but scales C0 (day-off) hours by the employee's contract percentage.
+ *  A 50% employee uses 3.8h of leave entitlement per C0 day, not the full 7.6h. */
+function hoursForEmployeeCode(
+  code: string | null,
+  contractPercent: number,
+  shiftCodes: Record<string, ShiftCodeRecord>,
+): number {
+  if (!code) return 0;
+  const base = shiftCodes[code]?.hours ?? 0;
+  if (code === "C0") return Math.round(base * (contractPercent / 100) * 10) / 10;
+  return base;
+}
+
 function isOnsiteCode(code: string | null, shiftCodes: Record<string, ShiftCodeRecord>): boolean {
   if (!code) return false;
   return shiftCodes[code]?.type === "onsite";
@@ -647,7 +660,7 @@ export function generatePlanning(params: {
         // Still count the locked entry's hours so violation checks are accurate
         const locked = lockedEntries.find((e) => e.employeeId === emp.id && e.date === dateStr);
         if (locked?.shiftCode) {
-          const h = hoursForCode(locked.shiftCode, shiftCodes);
+          const h = hoursForEmployeeCode(locked.shiftCode, emp.contractPercent ?? 100, shiftCodes);
           plannedHoursByEmployee[emp.id] = (plannedHoursByEmployee[emp.id] ?? 0) + h;
           remainingHours[emp.id] = (remainingHours[emp.id] ?? 0) - h;
           if (isOnsiteCode(locked.shiftCode, shiftCodes)) {
@@ -664,7 +677,7 @@ export function generatePlanning(params: {
 
       // Requested day off → C0
       if ((requestedOffMap[emp.id] ?? new Set()).has(dateStr)) {
-        const holidayHours = hoursForCode("C0", shiftCodes);
+        const holidayHours = hoursForEmployeeCode("C0", emp.contractPercent ?? 100, shiftCodes);
         entries.push({
           employeeId: emp.id,
           date: dateStr,
