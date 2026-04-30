@@ -341,6 +341,14 @@ export function generatePlanning(params: {
   const lockedSlots = new Set(lockedEntries.map((e) => `${e.employeeId}-${e.date}`));
 
   const workingDays = getWorkingDays(year, month, publicHolidayDates);
+
+  // Only auto-plan working days that belong to complete ISO weeks — weeks whose Monday
+  // falls within this month. Days at the start of the month that complete a week started
+  // in the previous month are left blank (no auto-planning entry generated for them).
+  const monthStartStr = format(startOfMonth(new Date(year, month - 1)), "yyyy-MM-dd");
+  const fullWeekWorkingDays = workingDays.filter((d) => getWeekNumber(d) >= monthStartStr);
+  const fullWeekWorkingDaySet = new Set(fullWeekWorkingDays);
+
   const allDays = eachDayOfInterval({
     start: startOfMonth(new Date(year, month - 1)),
     end: endOfMonth(new Date(year, month - 1)),
@@ -357,7 +365,7 @@ export function generatePlanning(params: {
   const permanenceGroup1 = employees.filter((e) => e.permanenceGroup === 1);
   const permanenceGroup2 = employees.filter((e) => e.permanenceGroup === 2);
 
-  const weekStarts = [...new Set(workingDays.map(getWeekNumber))];
+  const weekStarts = [...new Set(fullWeekWorkingDays.map(getWeekNumber))];
   let permanenceAssignments: Record<string, { g1: number | null; g2: number | null }>;
 
   if (externalPermanenceAssignments) {
@@ -438,7 +446,7 @@ export function generatePlanning(params: {
   }
 
   // JL day assignment (pre-configured from monthly config)
-  const jlAssignments = distributeJlDays(employees, workingDays, jlDays);
+  const jlAssignments = distributeJlDays(employees, fullWeekWorkingDays, jlDays);
 
   // Per-employee contractual hours (scaled by contract %) with PRM counter compensation
   const empContractualHours: Record<number, number> = {};
@@ -466,8 +474,8 @@ export function generatePlanning(params: {
     const jlDates = jlAssignments[emp.id] ?? new Set();
     const reqOffDates = requestedOffMap[emp.id] ?? new Set();
 
-    // Candidate shift days = working days that are not pre-assigned JL and not requested-off
-    const candidateShiftDays = workingDays.filter((d) => !jlDates.has(d) && !reqOffDates.has(d));
+    // Candidate shift days = full-week working days that are not pre-assigned JL and not requested-off
+    const candidateShiftDays = fullWeekWorkingDays.filter((d) => !jlDates.has(d) && !reqOffDates.has(d));
 
     // Compute how many JL substitutions are needed.
     // Strategy: use the full-time equivalent daily hours (contractualHours / workingDays) as
@@ -650,6 +658,10 @@ export function generatePlanning(params: {
 
     for (const emp of employees) {
       if (isWeekend || isPublicHoliday) continue;
+
+      // Skip days in partial weeks at the start of the month (completing a week from the
+      // previous month). These days are intentionally left unplanned by the auto-planner.
+      if (!fullWeekWorkingDaySet.has(dateStr)) continue;
 
       // Skip slots that have been manually locked — they already exist in the DB and are
       // preserved by the route (we only delete non-locked entries before inserting new ones).
@@ -1066,7 +1078,7 @@ export function generatePlanning(params: {
   // regenerated all other employees' preserved plans are visible to violation checks.
   const allEntriesForViolations = [...entries, ...lockedEntries];
 
-  for (const dateStr of workingDays) {
+  for (const dateStr of fullWeekWorkingDays) {
     const dayEntries = allEntriesForViolations.filter((e) => e.date === dateStr);
     const onsiteSet = new Set(
       dayEntries.filter((e) => isOnsiteCode(e.shiftCode, shiftCodes)).map((e) => e.employeeId)
@@ -1100,7 +1112,7 @@ export function generatePlanning(params: {
   // For each week, at least one employee assigned to a satellite office must be
   // onsite there (desk in that office). Locked entries count for coverage too.
   for (const wk of weekStarts) {
-    const weekDaySet = new Set(workingDays.filter((d) => getWeekNumber(d) === wk));
+    const weekDaySet = new Set(fullWeekWorkingDays.filter((d) => getWeekNumber(d) === wk));
     for (const satOffice of satelliteOffices) {
       const hasOnsiteAtSatellite = allEntriesForViolations.some(
         (e) =>

@@ -20,13 +20,6 @@ import { useState } from "react";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-const SHIFT_TYPE_COLORS: Record<string, string> = {
-  onsite: "bg-blue-500/15 text-blue-700 border-blue-500/20",
-  homework: "bg-green-500/15 text-green-700 border-green-500/20",
-  cowork: "bg-amber-500/15 text-amber-700 border-amber-500/20",
-  holiday: "bg-red-500/15 text-red-700 border-red-500/20",
-  jl: "bg-purple-500/15 text-purple-700 border-purple-500/20",
-};
 
 const DEFAULT_FORM = { code: "", label: "", hours: 8, type: "onsite", isActive: true, color: "" };
 
@@ -150,7 +143,7 @@ export default function ShiftCodesConfig() {
                     </TableCell>
                     <TableCell>{sc.label}</TableCell>
                     <TableCell>
-                      <Badge className={`capitalize border ${SHIFT_TYPE_COLORS[sc.type] ?? ""}`}>
+                      <Badge variant="outline" className="capitalize">
                         {sc.type}
                       </Badge>
                     </TableCell>
