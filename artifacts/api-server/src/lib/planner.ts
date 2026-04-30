@@ -625,10 +625,14 @@ export function generatePlanning(params: {
   const homeworkCountThisMonth: Record<number, number> = {};
   const plannedHoursByEmployee: Record<number, number> = {};
   const onsiteCountByEmployee: Record<number, number> = {};
+  // Days with a homework OR cowork code — used as denominator for the 50% onsite check
+  // (C0 holidays, JL leave, etc. are intentionally excluded from this ratio)
+  const nonOnsiteWorkCountByEmployee: Record<number, number> = {};
   for (const e of employees) {
     homeworkCountThisMonth[e.id] = 0;
     plannedHoursByEmployee[e.id] = 0;
     onsiteCountByEmployee[e.id] = 0;
+    nonOnsiteWorkCountByEmployee[e.id] = 0;
   }
 
   const entries: PlanningEntryInput[] = [];
@@ -651,8 +655,11 @@ export function generatePlanning(params: {
           const h = hoursForCode(locked.shiftCode, shiftCodes);
           plannedHoursByEmployee[emp.id] = (plannedHoursByEmployee[emp.id] ?? 0) + h;
           remainingHours[emp.id] = (remainingHours[emp.id] ?? 0) - h;
-          if (isOnsiteCode(locked.shiftCode, shiftCodes)) {
+          const lockedType = shiftCodes[locked.shiftCode]?.type;
+          if (lockedType === "onsite") {
             onsiteCountByEmployee[emp.id] = (onsiteCountByEmployee[emp.id] ?? 0) + 1;
+          } else if (lockedType === "homework" || lockedType === "cowork") {
+            nonOnsiteWorkCountByEmployee[emp.id] = (nonOnsiteWorkCountByEmployee[emp.id] ?? 0) + 1;
           }
         }
         remainingShiftDays[emp.id] = Math.max(0, (remainingShiftDays[emp.id] ?? 1) - 1);
@@ -929,11 +936,14 @@ export function generatePlanning(params: {
 
       const assignedHours = hoursForCode(chosenCode, shiftCodes);
 
-      if (isOnsiteCode(chosenCode, shiftCodes)) {
+      const chosenType = chosenCode ? shiftCodes[chosenCode]?.type : undefined;
+      if (chosenType === "onsite") {
         onsiteCountByEmployee[emp.id] = (onsiteCountByEmployee[emp.id] ?? 0) + 1;
-      }
-      if (isHomeworkCode(chosenCode, shiftCodes)) {
+      } else if (chosenType === "homework") {
         homeworkCountThisMonth[emp.id] = (homeworkCountThisMonth[emp.id] ?? 0) + 1;
+        nonOnsiteWorkCountByEmployee[emp.id] = (nonOnsiteWorkCountByEmployee[emp.id] ?? 0) + 1;
+      } else if (chosenType === "cowork") {
+        nonOnsiteWorkCountByEmployee[emp.id] = (nonOnsiteWorkCountByEmployee[emp.id] ?? 0) + 1;
       }
 
       plannedHoursByEmployee[emp.id] = (plannedHoursByEmployee[emp.id] ?? 0) + assignedHours;
@@ -1031,6 +1041,7 @@ export function generatePlanning(params: {
       entry.deskCode = promotedDesk;
       onsiteCountByEmployee[emp.id] = (onsiteCountByEmployee[emp.id] ?? 0) + 1;
       homeworkCountThisMonth[emp.id] = Math.max(0, (homeworkCountThisMonth[emp.id] ?? 0) - 1);
+      nonOnsiteWorkCountByEmployee[emp.id] = Math.max(0, (nonOnsiteWorkCountByEmployee[emp.id] ?? 0) - 1);
       plannedHoursByEmployee[emp.id] = (plannedHoursByEmployee[emp.id] ?? 0) + (newHours - oldHours);
     }
   }
@@ -1119,14 +1130,21 @@ export function generatePlanning(params: {
       });
     }
 
-    // Check 50% onsite minimum
-    const shiftDays = empShiftDays[emp.id]?.length ?? 0;
+    // Check 50% onsite minimum.
+    // Denominator = onsite days + homework days + cowork days only.
+    // Holidays (C0), JL leave, and other non-work codes are excluded so that
+    // part-time employees and those with many leave days are not penalised unfairly.
     const onsiteCount = onsiteCountByEmployee[emp.id] ?? 0;
-    if (shiftDays > 0 && onsiteCount < Math.ceil(shiftDays * MIN_ONSITE_RATIO)) {
+    const nonOnsiteWorkCount = nonOnsiteWorkCountByEmployee[emp.id] ?? 0;
+    const workDaysForRatio = onsiteCount + nonOnsiteWorkCount;
+    const requiredOnsite = emp.onsiteWeekRatio != null
+      ? Math.ceil(workDaysForRatio * emp.onsiteWeekRatio)
+      : Math.ceil(workDaysForRatio * MIN_ONSITE_RATIO);
+    if (workDaysForRatio > 0 && onsiteCount < requiredOnsite) {
       violations.push({
         date: `${year}-${String(month).padStart(2, "0")}`,
         type: "insufficient_onsite",
-        message: `${emp.name}: only ${onsiteCount}/${shiftDays} days onsite (min 50%)`,
+        message: `${emp.name}: only ${onsiteCount}/${workDaysForRatio} work days onsite (min ${Math.round((emp.onsiteWeekRatio ?? MIN_ONSITE_RATIO) * 100)}%)`,
         employeeId: emp.id,
       });
     }
