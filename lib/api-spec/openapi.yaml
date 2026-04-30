@@ -701,6 +701,36 @@ paths:
               schema:
                 $ref: "#/components/schemas/MonthPlanning"
 
+  /planning/{year}/{month}/entries:
+    post:
+      operationId: createPlanningEntry
+      tags: [planning]
+      summary: Create or update a single locked planning entry (upsert by employee+date)
+      parameters:
+        - name: year
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: month
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePlanningEntryBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanningEntry"
+
   /planning/entries/{id}:
     put:
       operationId: updatePlanningEntry
@@ -1346,6 +1376,21 @@ components:
             type: string
 
       required: [employeeId, dates]
+
+    CreatePlanningEntryBody:
+      type: object
+      properties:
+        employeeId:
+          type: integer
+        date:
+          type: string
+        shiftCode:
+          type: string
+          nullable: true
+        deskCode:
+          type: string
+          nullable: true
+      required: [employeeId, date]
 
     UpdatePlanningEntryBody:
       type: object

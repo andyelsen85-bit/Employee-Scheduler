@@ -1,6 +1,6 @@
 import { Layout } from "@/components/layout";
 import { useParams, Link } from "wouter";
-import { useGetMonthPlanning, getGetMonthPlanningQueryKey, useListEmployees, getListEmployeesQueryKey, useListShiftCodes, getListShiftCodesQueryKey, useGeneratePlanning, useGenerateEmployeePlanning, useConfirmPlanning, useUpdatePlanningEntry, useGetMonthlyConfig, getGetMonthlyConfigQueryKey, useListOffices, getListOfficesQueryKey, useListDepartments, getListDepartmentsQueryKey } from "@workspace/api-client-react";
+import { useGetMonthPlanning, getGetMonthPlanningQueryKey, useListEmployees, getListEmployeesQueryKey, useListShiftCodes, getListShiftCodesQueryKey, useGeneratePlanning, useGenerateEmployeePlanning, useConfirmPlanning, useUpdatePlanningEntry, useCreatePlanningEntry, useGetMonthlyConfig, getGetMonthlyConfigQueryKey, useListOffices, getListOfficesQueryKey, useListDepartments, getListDepartmentsQueryKey } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Download, CheckCircle, Wand2, AlertCircle, Trash2, Lock, RefreshCw } from "lucide-react";
 import { useState, Fragment } from "react";
@@ -139,6 +139,7 @@ export default function Planning() {
   const generatePlanning = useGeneratePlanning();
   const confirmPlanning = useConfirmPlanning();
   const updateEntry = useUpdatePlanningEntry();
+  const createEntry = useCreatePlanningEntry();
   const generateEmployeePlanning = useGenerateEmployeePlanning();
   const [isClearing, setIsClearing] = useState(false);
   const [regeneratingEmployeeId, setRegeneratingEmployeeId] = useState<number | null>(null);
@@ -231,6 +232,28 @@ export default function Planning() {
         queryClient.invalidateQueries({ queryKey: getGetMonthPlanningQueryKey(year, month) });
       }
     });
+  };
+
+  // Create or upsert an entry from an empty cell (sets shift code, marks as locked)
+  const handleCreateEntry = (employeeId: number, date: string, shiftCode: string | null) => {
+    createEntry.mutate({ year, month, data: { employeeId, date, shiftCode } }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getGetMonthPlanningQueryKey(year, month) });
+      }
+    });
+  };
+
+  // Set desk on an existing entry, or create if missing
+  const handleSetDesk = (entryId: number | undefined, employeeId: number, date: string, deskCode: string | null) => {
+    if (entryId !== undefined) {
+      handleUpdateDesk(entryId, deskCode);
+    } else {
+      createEntry.mutate({ year, month, data: { employeeId, date, deskCode } }, {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetMonthPlanningQueryKey(year, month) });
+        }
+      });
+    }
   };
 
   const prevMonth = month === 1 ? 12 : month - 1;
@@ -456,39 +479,54 @@ export default function Planning() {
                           const hasViolation = planning.violations.some(v => v.date.startsWith(dateStr) && (v.employeeId === emp.id || v.employeeId === null));
                           const hasDeskClash = !!(entry?.deskCode && deskClashes.get(dateStr)?.has(emp.id));
 
+                          const hasShift = !!(entry?.shiftCode);
+
                           return (
                             <td key={day.toISOString()} className={`p-1 border-r text-center relative ${weekend ? 'bg-muted/20' : ''} ${hasViolation ? 'bg-destructive/5' : ''}`}>
-                              {entry && entry.shiftCode && !weekend ? (
+                              {!weekend && (
                                 <div className="flex flex-col gap-0.5">
-                                  {/* Shift code button with override popover */}
+                                  {/* ── Shift code popover ── */}
                                   <Popover>
                                     <PopoverTrigger asChild>
                                       {(() => {
-                                        const codeType = shiftTypeMap.get(entry.shiftCode!);
-                                        const style = !hasViolation && codeType ? SHIFT_TYPE_STYLE[codeType] : null;
+                                        if (hasShift) {
+                                          const codeType = shiftTypeMap.get(entry!.shiftCode!);
+                                          const style = !hasViolation && codeType ? SHIFT_TYPE_STYLE[codeType] : null;
+                                          return (
+                                            <button
+                                              className={`px-2 py-1 text-xs font-semibold rounded w-full border transition-colors hover:opacity-80 ${hasViolation ? 'bg-destructive/10 text-destructive border-destructive/30 ring-1 ring-destructive' : ''} ${entry!.isLocked ? 'ring-1 ring-amber-400' : ''}`}
+                                              style={style ? { backgroundColor: style.bg, color: style.text, borderColor: style.border } : undefined}
+                                            >
+                                              <span className="flex items-center justify-center gap-0.5">
+                                                {entry!.isLocked && <Lock className="h-2.5 w-2.5 opacity-60 flex-shrink-0" />}
+                                                {entry!.shiftCode}
+                                              </span>
+                                            </button>
+                                          );
+                                        }
+                                        // Empty cell — show subtle "+" trigger
                                         return (
-                                          <button
-                                            className={`px-2 py-1 text-xs font-semibold rounded w-full border transition-colors hover:opacity-80 ${hasViolation ? 'bg-destructive/10 text-destructive border-destructive/30 ring-1 ring-destructive' : ''} ${entry.isLocked ? 'ring-1 ring-amber-400' : ''}`}
-                                            style={style ? { backgroundColor: style.bg, color: style.text, borderColor: style.border } : undefined}
-                                          >
-                                            <span className="flex items-center justify-center gap-0.5">
-                                              {entry.isLocked && <Lock className="h-2.5 w-2.5 opacity-60 flex-shrink-0" />}
-                                              {entry.shiftCode}
-                                            </span>
+                                          <button className="w-full h-6 flex items-center justify-center text-muted-foreground/30 hover:text-muted-foreground/70 hover:bg-muted/40 rounded transition-colors text-xs">
+                                            +
                                           </button>
                                         );
                                       })()}
                                     </PopoverTrigger>
                                     <PopoverContent className="w-52 p-2" side="bottom">
-                                      <div className="text-xs font-semibold text-muted-foreground mb-2">Shift Code</div>
+                                      <div className="text-xs font-semibold text-muted-foreground mb-2">
+                                        {hasShift ? "Change Shift Code" : "Set Shift Code"}
+                                      </div>
                                       <div className="grid grid-cols-2 gap-1">
                                         {shiftCodes?.map(sc => {
                                           const s = SHIFT_TYPE_STYLE[sc.type];
-                                          const isActive = sc.code === entry.shiftCode;
+                                          const isActive = sc.code === entry?.shiftCode;
                                           return (
                                             <button
                                               key={sc.code}
-                                              onClick={() => handleUpdateShift(entry.id, sc.code)}
+                                              onClick={() => hasShift
+                                                ? handleUpdateShift(entry!.id, sc.code)
+                                                : handleCreateEntry(emp.id, dateStr, sc.code)
+                                              }
                                               className={`text-xs font-semibold px-2 py-1.5 rounded border transition-colors hover:opacity-80 ${isActive ? 'ring-2 ring-offset-1' : ''}`}
                                               style={s ? { backgroundColor: s.bg, color: s.text, borderColor: s.border } : undefined}
                                             >
@@ -496,54 +534,66 @@ export default function Planning() {
                                             </button>
                                           );
                                         })}
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          className="text-destructive text-xs col-span-2"
-                                          onClick={() => handleUpdateShift(entry.id, "")}
-                                        >
-                                          Clear shift
-                                        </Button>
+                                        {hasShift && (
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="text-destructive text-xs col-span-2"
+                                            onClick={() => handleUpdateShift(entry!.id, "")}
+                                          >
+                                            Clear shift
+                                          </Button>
+                                        )}
                                       </div>
                                     </PopoverContent>
                                   </Popover>
 
-                                  {/* Desk code with override popover */}
+                                  {/* ── Desk code popover ── */}
                                   <Popover>
                                     <PopoverTrigger asChild>
                                       {(() => {
-                                        const isOnsite = shiftTypeMap.get(entry.shiftCode!) === "onsite";
-                                        const missingDesk = isOnsite && !entry.deskCode;
+                                        if (hasShift) {
+                                          const isOnsite = shiftTypeMap.get(entry!.shiftCode!) === "onsite";
+                                          const missingDesk = isOnsite && !entry!.deskCode;
+                                          return (
+                                            <button
+                                              className={`text-[9px] font-bold font-mono rounded px-1 py-0.5 leading-tight text-center border transition-colors hover:opacity-80 w-full ${hasDeskClash ? 'ring-1 ring-red-500 bg-red-50 text-red-700 border-red-300' : ''}`}
+                                              style={hasDeskClash ? undefined
+                                                : missingDesk ? { backgroundColor: '#7f1d1d', color: '#fef2f2', borderColor: '#991b1b' }
+                                                : entry!.deskCode && deskColorMap.get(entry!.deskCode)
+                                                  ? { backgroundColor: deskColorMap.get(entry!.deskCode)!.bg, color: deskColorMap.get(entry!.deskCode)!.text, borderColor: deskColorMap.get(entry!.deskCode)!.bg }
+                                                  : { backgroundColor: '#f1f5f9', color: '#94a3b8', borderColor: '#e2e8f0' }
+                                              }
+                                            >
+                                              {entry!.deskCode || "—"}
+                                            </button>
+                                          );
+                                        }
+                                        // No shift — show a very subtle desk trigger so users can pre-assign a desk too
                                         return (
-                                          <button
-                                            className={`text-[9px] font-bold font-mono rounded px-1 py-0.5 leading-tight text-center border transition-colors hover:opacity-80 w-full ${hasDeskClash ? 'ring-1 ring-red-500 bg-red-50 text-red-700 border-red-300' : ''}`}
-                                            style={hasDeskClash ? undefined
-                                              : missingDesk ? { backgroundColor: '#7f1d1d', color: '#fef2f2', borderColor: '#991b1b' }
-                                              : entry.deskCode && deskColorMap.get(entry.deskCode)
-                                                ? { backgroundColor: deskColorMap.get(entry.deskCode)!.bg, color: deskColorMap.get(entry.deskCode)!.text, borderColor: deskColorMap.get(entry.deskCode)!.bg }
-                                                : { backgroundColor: '#f1f5f9', color: '#94a3b8', borderColor: '#e2e8f0' }
-                                            }
-                                          >
-                                            {entry.deskCode || "—"}
+                                          <button className="w-full h-4 flex items-center justify-center text-muted-foreground/20 hover:text-muted-foreground/50 hover:bg-muted/30 rounded transition-colors text-[9px] font-mono">
+                                            —
                                           </button>
                                         );
                                       })()}
                                     </PopoverTrigger>
                                     <PopoverContent className="w-52 p-2" side="bottom">
-                                      <div className="text-xs font-semibold text-muted-foreground mb-2">Desk Override</div>
-                                      {hasDeskClash && (
-                                        <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-2 py-1 mb-2">
-                                          ⚠ Desk clash — same desk assigned to multiple people
-                                        </div>
-                                      )}
+                                      <div className="text-xs font-semibold text-muted-foreground mb-2">
+                                        {hasDeskClash && (
+                                          <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-2 py-1 mb-2">
+                                            ⚠ Desk clash — same desk assigned to multiple people
+                                          </div>
+                                        )}
+                                        Desk
+                                      </div>
                                       <div className="grid grid-cols-2 gap-1 max-h-48 overflow-y-auto">
                                         {allDeskCodes.map(({ code }) => {
                                           const color = deskColorMap.get(code);
-                                          const isActive = code === entry.deskCode;
+                                          const isActive = code === entry?.deskCode;
                                           return (
                                             <button
                                               key={code}
-                                              onClick={() => handleUpdateDesk(entry.id, code)}
+                                              onClick={() => handleSetDesk(entry?.id, emp.id, dateStr, code)}
                                               className={`text-xs font-bold font-mono px-2 py-1.5 rounded border transition-colors hover:opacity-80 ${isActive ? 'ring-2 ring-offset-1' : ''}`}
                                               style={color ? { backgroundColor: color.bg, color: color.text, borderColor: color.border } : undefined}
                                             >
@@ -551,19 +601,21 @@ export default function Planning() {
                                             </button>
                                           );
                                         })}
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          className="text-destructive text-xs col-span-2"
-                                          onClick={() => handleUpdateDesk(entry.id, null)}
-                                        >
-                                          Clear desk
-                                        </Button>
+                                        {entry?.deskCode && (
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="text-destructive text-xs col-span-2"
+                                            onClick={() => handleSetDesk(entry!.id, emp.id, dateStr, null)}
+                                          >
+                                            Clear desk
+                                          </Button>
+                                        )}
                                       </div>
                                     </PopoverContent>
                                   </Popover>
                                 </div>
-                              ) : null}
+                              )}
                             </td>
                           );
                         })}

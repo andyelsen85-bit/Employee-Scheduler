@@ -21,6 +21,7 @@ import type {
   CreateEmployeeBody,
   CreateHolidayBody,
   CreateOfficeBody,
+  CreatePlanningEntryBody,
   CreateShiftCodeBody,
   CreateWeekTemplateBody,
   DashboardSummary,
@@ -2956,6 +2957,94 @@ export const useConfirmPlanning = <
   TContext
 > => {
   return useMutation(getConfirmPlanningMutationOptions(options));
+};
+
+/**
+ * @summary Create or update a single locked planning entry (upsert by employee+date)
+ */
+export const getCreatePlanningEntryUrl = (year: number, month: number) => {
+  return `/api/planning/${year}/${month}/entries`;
+};
+
+export const createPlanningEntry = async (
+  year: number,
+  month: number,
+  createPlanningEntryBody: CreatePlanningEntryBody,
+  options?: RequestInit,
+): Promise<PlanningEntry> => {
+  return customFetch<PlanningEntry>(getCreatePlanningEntryUrl(year, month), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createPlanningEntryBody),
+  });
+};
+
+export const getCreatePlanningEntryMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createPlanningEntry>>,
+    TError,
+    { year: number; month: number; data: BodyType<CreatePlanningEntryBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createPlanningEntry>>,
+  TError,
+  { year: number; month: number; data: BodyType<CreatePlanningEntryBody> },
+  TContext
+> => {
+  const mutationKey = ["createPlanningEntry"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createPlanningEntry>>,
+    { year: number; month: number; data: BodyType<CreatePlanningEntryBody> }
+  > = (props) => {
+    const { year, month, data } = props ?? {};
+
+    return createPlanningEntry(year, month, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreatePlanningEntryMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createPlanningEntry>>
+>;
+export type CreatePlanningEntryMutationBody = BodyType<CreatePlanningEntryBody>;
+export type CreatePlanningEntryMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create or update a single locked planning entry (upsert by employee+date)
+ */
+export const useCreatePlanningEntry = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createPlanningEntry>>,
+    TError,
+    { year: number; month: number; data: BodyType<CreatePlanningEntryBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createPlanningEntry>>,
+  TError,
+  { year: number; month: number; data: BodyType<CreatePlanningEntryBody> },
+  TContext
+> => {
+  return useMutation(getCreatePlanningEntryMutationOptions(options));
 };
 
 /**

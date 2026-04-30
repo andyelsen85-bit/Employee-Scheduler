@@ -929,6 +929,37 @@ export const ConfirmPlanningResponse = zod.object({
 });
 
 /**
+ * @summary Create or update a single locked planning entry (upsert by employee+date)
+ */
+export const CreatePlanningEntryParams = zod.object({
+  year: zod.coerce.number(),
+  month: zod.coerce.number(),
+});
+
+export const CreatePlanningEntryBody = zod.object({
+  employeeId: zod.number(),
+  date: zod.string(),
+  shiftCode: zod.string().nullish(),
+  deskCode: zod.string().nullish(),
+});
+
+export const CreatePlanningEntryResponse = zod.object({
+  id: zod.number(),
+  employeeId: zod.number(),
+  date: zod.string(),
+  shiftCode: zod.string().nullish(),
+  deskCode: zod
+    .string()
+    .nullish()
+    .describe("Randomly assigned shared desk for onsite days"),
+  isPermanence: zod.boolean(),
+  permanenceLevel: zod.number().nullish(),
+  isLocked: zod.boolean().describe("True when manually set or confirmed"),
+  requestedOff: zod.boolean(),
+  notes: zod.string().nullish(),
+});
+
+/**
  * @summary Manually update a single planning entry
  */
 export const UpdatePlanningEntryParams = zod.object({

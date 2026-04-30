@@ -284,6 +284,13 @@ export interface GeneratePlanningBody {
   overwriteExisting?: boolean;
 }
 
+export interface CreatePlanningEntryBody {
+  employeeId: number;
+  date: string;
+  shiftCode?: string | null;
+  deskCode?: string | null;
+}
+
 export interface UpdatePlanningEntryBody {
   shiftCode?: string | null;
   deskCode?: string | null;

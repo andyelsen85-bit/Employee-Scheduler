@@ -558,6 +558,80 @@ router.post("/planning/:year/:month/confirm", async (req, res): Promise<void> =>
   res.json(await buildMonthResponse(year, month));
 });
 
+// POST /api/planning/:year/:month/entries — upsert a locked entry for an empty or generated month
+router.post("/planning/:year/:month/entries", async (req, res): Promise<void> => {
+  const year = parseInt(req.params.year, 10);
+  const month = parseInt(req.params.month, 10);
+  if (isNaN(year) || isNaN(month)) {
+    res.status(400).json({ error: "Invalid year/month" });
+    return;
+  }
+  const { employeeId, date, shiftCode, deskCode } = req.body as {
+    employeeId: number;
+    date: string;
+    shiftCode?: string | null;
+    deskCode?: string | null;
+  };
+  if (!employeeId || !date) {
+    res.status(400).json({ error: "employeeId and date are required" });
+    return;
+  }
+
+  const pm = await getOrCreateMonth(year, month);
+
+  // Upsert: find existing entry for this employee+date in this planning month
+  const [existing] = await db
+    .select()
+    .from(planningEntriesTable)
+    .where(
+      and(
+        eq(planningEntriesTable.planningMonthId, pm.id),
+        eq(planningEntriesTable.employeeId, employeeId),
+        eq(planningEntriesTable.date, date),
+      ),
+    );
+
+  let row;
+  if (existing) {
+    const update: Partial<typeof planningEntriesTable.$inferInsert> = { isLocked: true };
+    if (shiftCode !== undefined) update.shiftCode = shiftCode ?? null;
+    if (deskCode !== undefined) update.deskCode = deskCode ?? null;
+    [row] = await db
+      .update(planningEntriesTable)
+      .set(update)
+      .where(eq(planningEntriesTable.id, existing.id))
+      .returning();
+  } else {
+    [row] = await db
+      .insert(planningEntriesTable)
+      .values({
+        planningMonthId: pm.id,
+        employeeId,
+        date,
+        shiftCode: shiftCode ?? null,
+        deskCode: deskCode ?? null,
+        isLocked: true,
+        isPermanence: false,
+        permanenceLevel: null,
+        requestedOff: false,
+      })
+      .returning();
+  }
+
+  res.json({
+    id: row.id,
+    employeeId: row.employeeId,
+    date: row.date,
+    shiftCode: row.shiftCode,
+    deskCode: row.deskCode ?? null,
+    isPermanence: row.isPermanence,
+    permanenceLevel: row.permanenceLevel,
+    isLocked: row.isLocked,
+    requestedOff: row.requestedOff,
+    notes: row.notes,
+  });
+});
+
 router.put("/planning/entries/:id", async (req, res): Promise<void> => {
   const params = UpdatePlanningEntryParams.safeParse(req.params);
   if (!params.success) {
