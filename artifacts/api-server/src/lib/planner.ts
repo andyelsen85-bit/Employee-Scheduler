@@ -324,6 +324,11 @@ export function generatePlanning(params: {
    * budget so the planner doesn't generate more JL days than needed.
    */
   prevMonthOverflowJlCountByEmployee?: Record<number, number>;
+  /** Hours already locked in for this month via the previous month's overflow entries
+   *  (e.g. Apr 1–3 shift entries from the March plan appearing in the April grid).
+   *  These hours count toward the visual monthly total so the planner subtracts them
+   *  from the effective target before computing how many JL days are needed. */
+  prevMonthOverflowShiftHoursByEmployee?: Record<number, number>;
 }): { entries: PlanningEntryInput[]; violations: PlanningViolation[] } {
   const {
     year,
@@ -337,6 +342,7 @@ export function generatePlanning(params: {
     requestedDaysOff,
     lockedEntries = [],
     prevMonthOverflowJlCountByEmployee = {},
+    prevMonthOverflowShiftHoursByEmployee = {},
     permanenceAssignments: externalPermanenceAssignments,
     spocRotationAssignments = {},
     spocRotationOfficeId,
@@ -583,12 +589,21 @@ export function generatePlanning(params: {
     //    convert enough shift days to JL to stay within the budget.
     //    e.g. Dirk V 100%, 9h codes, 22 days, 176h target →
     //         ceil(22 − 176/9) = ceil(2.44) = 3 JL days.
+    //
+    // The effective target is reduced by any shift hours already contributed by
+    // the previous month's overflow entries that fall inside this month's calendar
+    // (e.g. April 1–3 from the March plan shown in the April grid).  Those hours
+    // are visible to the user and count toward the monthly total, so the planner
+    // must not double-budget for them.
     const contractRatio = (emp.contractPercent ?? 100) / 100;
     const proportionalJL = Math.ceil(candidateShiftDays.length * (1 - contractRatio));
 
+    const prevOverflowShiftH = prevMonthOverflowShiftHoursByEmployee[emp.id] ?? 0;
+    const effectiveTarget = Math.max(0, empTarget - prevOverflowShiftH);
+
     let hoursJL = 0;
-    if (weightedAvgHours > 0 && totalExpectedIfAllShift > empTarget) {
-      hoursJL = Math.ceil(candidateShiftDays.length - empTarget / weightedAvgHours);
+    if (weightedAvgHours > 0 && totalExpectedIfAllShift > effectiveTarget) {
+      hoursJL = Math.ceil(candidateShiftDays.length - effectiveTarget / weightedAvgHours);
     }
 
     let neededJL = Math.max(proportionalJL, hoursJL);

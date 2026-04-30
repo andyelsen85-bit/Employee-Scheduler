@@ -304,11 +304,11 @@ router.post("/planning/:year/:month/generate", async (req, res): Promise<void> =
   const firstDayDow = firstDay.getUTCDay(); // 0=Sun … 6=Sat
   const numInitialPartialDays = firstDayDow === 1 ? 0 : firstDayDow === 0 ? 1 : 8 - firstDayDow;
 
-  const [precomputedPermanence, spocRotation, prevMonthOverflowJlCountByEmployee] = await Promise.all([
+  const [precomputedPermanence, spocRotation, prevMonthOverflow] = await Promise.all([
     buildPermanenceAssignments(year, month),
     buildSpocRotationAssignments(year, month),
-    (async (): Promise<Record<number, number>> => {
-      if (numInitialPartialDays === 0) return {};
+    (async (): Promise<{ jlCounts: Record<number, number>; shiftHours: Record<number, number> }> => {
+      if (numInitialPartialDays === 0) return { jlCounts: {}, shiftHours: {} };
       const partialDays: string[] = [];
       for (let i = 0; i < numInitialPartialDays; i++) {
         partialDays.push(
@@ -321,7 +321,7 @@ router.post("/planning/:year/:month/generate", async (req, res): Promise<void> =
         .select()
         .from(planningMonthsTable)
         .where(and(eq(planningMonthsTable.year, prevY), eq(planningMonthsTable.month, prevM)));
-      if (prevPmRows.length === 0) return {};
+      if (prevPmRows.length === 0) return { jlCounts: {}, shiftHours: {} };
       const prevEntries = await db
         .select()
         .from(planningEntriesTable)
@@ -331,15 +331,20 @@ router.post("/planning/:year/:month/generate", async (req, res): Promise<void> =
             inArray(planningEntriesTable.date, partialDays)
           )
         );
-      const counts: Record<number, number> = {};
+      const jlCounts: Record<number, number> = {};
+      const shiftHours: Record<number, number> = {};
       for (const e of prevEntries) {
         if (e.shiftCode === "JL") {
-          counts[e.employeeId] = (counts[e.employeeId] ?? 0) + 1;
+          jlCounts[e.employeeId] = (jlCounts[e.employeeId] ?? 0) + 1;
+        } else if (e.shiftCode && e.shiftCode !== "C0") {
+          shiftHours[e.employeeId] = (shiftHours[e.employeeId] ?? 0) + (shiftCodes[e.shiftCode]?.hours ?? 0);
         }
       }
-      return counts;
+      return { jlCounts, shiftHours };
     })(),
   ]);
+  const prevMonthOverflowJlCountByEmployee = prevMonthOverflow.jlCounts;
+  const prevMonthOverflowShiftHoursByEmployee = prevMonthOverflow.shiftHours;
 
   const { entries, violations } = generatePlanning({
     year,
@@ -384,6 +389,7 @@ router.post("/planning/:year/:month/generate", async (req, res): Promise<void> =
     spocRotationAssignments: spocRotation.assignments,
     spocRotationOfficeId: spocRotation.officeId,
     prevMonthOverflowJlCountByEmployee,
+    prevMonthOverflowShiftHoursByEmployee,
   });
 
   // Delete all non-locked entries, then insert newly generated ones
@@ -496,10 +502,10 @@ router.post("/planning/:year/:month/generate/employee/:employeeId", async (req, 
   const firstDayDowSingle = firstDaySingle.getUTCDay();
   const numInitialPartialDaysSingle = firstDayDowSingle === 1 ? 0 : firstDayDowSingle === 0 ? 1 : 8 - firstDayDowSingle;
 
-  const [precomputedPermanence, prevMonthOverflowJlCountByEmployeeSingle] = await Promise.all([
+  const [precomputedPermanence, prevMonthOverflowSingle] = await Promise.all([
     buildPermanenceAssignments(year, month),
-    (async (): Promise<Record<number, number>> => {
-      if (numInitialPartialDaysSingle === 0) return {};
+    (async (): Promise<{ jlCounts: Record<number, number>; shiftHours: Record<number, number> }> => {
+      if (numInitialPartialDaysSingle === 0) return { jlCounts: {}, shiftHours: {} };
       const partialDays: string[] = [];
       for (let i = 0; i < numInitialPartialDaysSingle; i++) {
         partialDays.push(
@@ -512,7 +518,7 @@ router.post("/planning/:year/:month/generate/employee/:employeeId", async (req, 
         .select()
         .from(planningMonthsTable)
         .where(and(eq(planningMonthsTable.year, prevY), eq(planningMonthsTable.month, prevM)));
-      if (prevPmRows.length === 0) return {};
+      if (prevPmRows.length === 0) return { jlCounts: {}, shiftHours: {} };
       const prevEntries = await db
         .select()
         .from(planningEntriesTable)
@@ -522,13 +528,20 @@ router.post("/planning/:year/:month/generate/employee/:employeeId", async (req, 
             inArray(planningEntriesTable.date, partialDays)
           )
         );
-      const counts: Record<number, number> = {};
+      const jlCounts: Record<number, number> = {};
+      const shiftHours: Record<number, number> = {};
       for (const e of prevEntries) {
-        if (e.shiftCode === "JL") counts[e.employeeId] = (counts[e.employeeId] ?? 0) + 1;
+        if (e.shiftCode === "JL") {
+          jlCounts[e.employeeId] = (jlCounts[e.employeeId] ?? 0) + 1;
+        } else if (e.shiftCode && e.shiftCode !== "C0") {
+          shiftHours[e.employeeId] = (shiftHours[e.employeeId] ?? 0) + (shiftCodes[e.shiftCode]?.hours ?? 0);
+        }
       }
-      return counts;
+      return { jlCounts, shiftHours };
     })(),
   ]);
+  const prevMonthOverflowJlCountByEmployeeSingle = prevMonthOverflowSingle.jlCounts;
+  const prevMonthOverflowShiftHoursByEmployeeSingle = prevMonthOverflowSingle.shiftHours;
 
   const { entries, violations } = generatePlanning({
     year,
@@ -571,6 +584,7 @@ router.post("/planning/:year/:month/generate/employee/:employeeId", async (req, 
     lockedEntries,
     permanenceAssignments: precomputedPermanence,
     prevMonthOverflowJlCountByEmployee: prevMonthOverflowJlCountByEmployeeSingle,
+    prevMonthOverflowShiftHoursByEmployee: prevMonthOverflowShiftHoursByEmployeeSingle,
   });
 
   // Delete only the target employee's non-locked entries, then insert their new ones

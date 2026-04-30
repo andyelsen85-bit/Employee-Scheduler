@@ -292,13 +292,11 @@ export default function Planning() {
 
   function getEmployeePlannedHours(empId: number): number {
     if (!planning) return 0;
+    // Include ALL entries visible in this month's grid (current plan + previous month's
+    // overflow entries shown at the start of the month). The planner already accounts for
+    // those overflow hours when computing JL days, so the total correctly tracks against target.
     return planning.entries
-      .filter(e =>
-        e.employeeId === empId &&
-        e.shiftCode &&
-        e.date.startsWith(currentMonthPrefix) &&
-        !e.isFromPrevMonth          // exclude overflow entries shown from previous month
-      )
+      .filter(e => e.employeeId === empId && e.shiftCode && e.date.startsWith(currentMonthPrefix))
       .reduce((sum, e) => sum + (shiftHoursMap.get(e.shiftCode!) ?? 0), 0);
   }
 
