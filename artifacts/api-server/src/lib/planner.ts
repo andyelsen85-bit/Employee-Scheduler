@@ -524,6 +524,17 @@ export function generatePlanning(params: {
     }
   }
 
+  // Also fold in overflow JL from the previous month (e.g. a JL on Jul 1 that was planned by
+  // June's planner as an overflow day). Those dates are outside thisMonthPlanningDaySet so the
+  // loop above misses them, yet they already consume one of the employee's JL days for this month.
+  // Merging them here ensures distributeJlDays reduces its target count accordingly.
+  for (const [empIdStr, count] of Object.entries(prevMonthOverflowJlCountByEmployee)) {
+    const empId = Number(empIdStr);
+    lockedJlCountByEmp[empId] = (lockedJlCountByEmp[empId] ?? 0) + count;
+    // No date exclusion needed: overflow dates are not in thisMonthPlanningDays so
+    // distributeJlDays would never pick them anyway.
+  }
+
   const jlAssignments = distributeJlDays(
     employees,
     thisMonthPlanningDays,
