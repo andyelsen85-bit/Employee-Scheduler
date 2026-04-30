@@ -2,7 +2,7 @@ import { Layout } from "@/components/layout";
 import { useParams, Link } from "wouter";
 import { useGetMonthPlanning, getGetMonthPlanningQueryKey, useListEmployees, getListEmployeesQueryKey, useListShiftCodes, getListShiftCodesQueryKey, useGeneratePlanning, useGenerateEmployeePlanning, useConfirmPlanning, useUpdatePlanningEntry, useCreatePlanningEntry, useGetMonthlyConfig, getGetMonthlyConfigQueryKey, useListOffices, getListOfficesQueryKey, useListDepartments, getListDepartmentsQueryKey } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Download, CheckCircle, Wand2, AlertCircle, Trash2, Lock, RefreshCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, CheckCircle, Wand2, AlertCircle, Trash2, Lock, RefreshCw } from "lucide-react";
 import { useState, Fragment } from "react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -341,10 +341,6 @@ export default function Planning() {
           </div>
           
           <div className="flex gap-2">
-            <Button variant="outline" size="sm">
-              <Download className="h-4 w-4 mr-2" />
-              Collect Requests
-            </Button>
             <Button variant="outline" size="sm" onClick={handleGenerate} disabled={generatePlanning.isPending || isClearing}>
               <Wand2 className="h-4 w-4 mr-2" />
               Generate
