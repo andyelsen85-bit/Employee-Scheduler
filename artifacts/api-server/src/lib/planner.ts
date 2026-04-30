@@ -68,8 +68,7 @@ export type PlanningViolation = {
 const HOMEWORK_DAY_LIMIT = 35;
 const PRM_MAX = 10;
 const PRM_MIN = -10;
-const MIN_ONSITE_RATIO = 0.5;  // hard floor used only for violation checks
-const ONSITE_PLAN_RATIO = 0.6; // target planning ratio: ~60% onsite / ~40% homework for eligible employees
+const MIN_ONSITE_RATIO = 0.5; // hard floor used only for violation checks
 
 function getWorkingDays(year: number, month: number, publicHolidayDates: string[]): string[] {
   const start = startOfMonth(new Date(year, month - 1));
@@ -255,16 +254,13 @@ function predetermineWeeklyTypes(
 
   const numWeeks = weekKeys.length;
 
-  // Use ONSITE_PLAN_RATIO (60%) as the target when the employee has remote options;
-  // if no remote options exist, plan all weeks onsite.
-  // Math.floor keeps us from overshooting: e.g. 4 weeks → 2 onsite (not 3), 6 weeks → 3 (not 4).
-  // Math.max ensures we never fall below the 50% hard floor (MIN_ONSITE_RATIO).
+  // Desired week-type distribution (floor gives exact integer split):
+  //   4 weeks → 2 onsite   5 weeks → 2 onsite
+  //   6 weeks → 3 onsite   7 weeks → 3 onsite
+  // Formula: floor(n / 2)  i.e. floor(n * 0.5)
   const hasRemote = canHomework || canCowork;
   const targetOnsiteWeeks = hasRemote
-    ? Math.max(
-        Math.floor(numWeeks * ONSITE_PLAN_RATIO),
-        Math.ceil(numWeeks * MIN_ONSITE_RATIO)
-      )
+    ? Math.floor(numWeeks * 0.5)
     : numWeeks;
   // Remaining weeks go to homework and/or cowork (40% target for eligible employees)
   const remaining = numWeeks - targetOnsiteWeeks;
