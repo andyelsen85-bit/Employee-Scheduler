@@ -46,22 +46,14 @@ export default function Planning() {
   const byDisplayOrder = (a: EmpRow, b: EmpRow) =>
     (a.displayOrder ?? 0) - (b.displayOrder ?? 0);
   const buildGroups = (emps: EmpRow[], depts: NonNullable<typeof departments>) => {
-    const spoc = emps.filter(e => e.isSpoc).sort(byDisplayOrder);
-    const management = emps.filter(e => !e.isSpoc && e.isManagement).sort(byDisplayOrder);
     const sortedDepts = [...depts].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     const deptGroups = sortedDepts.map(d => ({
       label: d.name,
-      emps: emps.filter(e => !e.isSpoc && !e.isManagement && e.departmentId === d.id).sort(byDisplayOrder),
+      emps: emps.filter(e => e.departmentId === d.id).sort(byDisplayOrder),
     })).filter(g => g.emps.length > 0);
-    const assignedEmpIds = new Set([
-      ...spoc.map(e => e.id),
-      ...management.map(e => e.id),
-      ...deptGroups.flatMap(g => g.emps.map(e => e.id)),
-    ]);
+    const assignedEmpIds = new Set(deptGroups.flatMap(g => g.emps.map(e => e.id)));
     const ungrouped = emps.filter(e => !assignedEmpIds.has(e.id)).sort(byDisplayOrder);
     const groups: { label: string | null; emps: EmpRow[] }[] = [];
-    if (spoc.length) groups.push({ label: "SPOC", emps: spoc });
-    if (management.length) groups.push({ label: "Management", emps: management });
     for (const g of deptGroups) groups.push(g);
     if (ungrouped.length) groups.push({ label: null, emps: ungrouped });
     return groups;

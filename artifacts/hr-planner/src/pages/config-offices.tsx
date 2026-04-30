@@ -215,7 +215,16 @@ export default function OfficesConfig() {
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between">
                       <div>
-                        <CardTitle className="text-lg">{office.name}</CardTitle>
+                        <div className="flex items-center gap-2">
+                          {office.color && (
+                            <span
+                              className="inline-block h-3.5 w-3.5 rounded-full border border-black/10 flex-shrink-0"
+                              style={{ backgroundColor: office.color }}
+                              title={office.color}
+                            />
+                          )}
+                          <CardTitle className="text-lg">{office.name}</CardTitle>
+                        </div>
                         <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
                           <span className="flex items-center gap-1">
                             <Building2 className="h-3.5 w-3.5" />
@@ -228,7 +237,7 @@ export default function OfficesConfig() {
                         </div>
                       </div>
                       <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(office)}>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(office as Parameters<typeof openEdit>[0])}>
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
                         <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(office.id, office.name)}>

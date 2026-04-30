@@ -134,7 +134,20 @@ export default function ShiftCodesConfig() {
               <TableBody>
                 {shiftCodes?.map((sc) => (
                   <TableRow key={sc.code}>
-                    <TableCell className="font-mono font-semibold">{sc.code}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        {sc.color ? (
+                          <span
+                            className="inline-block h-3.5 w-3.5 rounded-full border border-black/10 flex-shrink-0"
+                            style={{ backgroundColor: sc.color }}
+                            title={sc.color}
+                          />
+                        ) : (
+                          <span className="inline-block h-3.5 w-3.5 rounded-full border border-dashed border-muted-foreground/30 flex-shrink-0" />
+                        )}
+                        <span className="font-mono font-semibold">{sc.code}</span>
+                      </div>
+                    </TableCell>
                     <TableCell>{sc.label}</TableCell>
                     <TableCell>
                       <Badge className={`capitalize border ${SHIFT_TYPE_COLORS[sc.type] ?? ""}`}>

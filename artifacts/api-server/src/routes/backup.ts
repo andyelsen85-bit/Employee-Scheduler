@@ -154,14 +154,15 @@ router.post("/backup/restore", async (req, res): Promise<void> => {
     if (offs.length > 0) {
       for (const row of offs) {
         await client.query(
-          `INSERT INTO "offices" ("id","name","desk_count","desk_codes","height_adjustable_desks","created_at")
-           OVERRIDING SYSTEM VALUE VALUES ($1,$2,$3,$4,$5,$6)`,
+          `INSERT INTO "offices" ("id","name","desk_count","desk_codes","height_adjustable_desks","color","created_at")
+           OVERRIDING SYSTEM VALUE VALUES ($1,$2,$3,$4,$5,$6,$7)`,
           [
             row.id,
             row.name,
             row.deskCount ?? row.desk_count ?? 0,
             toJsonb(row.deskCodes ?? row.desk_codes ?? []),
             toJsonb(row.heightAdjustableDesks ?? row.height_adjustable_desks ?? []),
+            row.color ?? null,
             row.createdAt ?? row.created_at ?? new Date().toISOString(),
           ]
         );
@@ -173,8 +174,8 @@ router.post("/backup/restore", async (req, res): Promise<void> => {
     if (sc.length > 0) {
       for (const row of sc) {
         await client.query(
-          `INSERT INTO "shift_codes" ("code", "label", "hours", "type", "is_active") VALUES ($1,$2,$3,$4,$5)`,
-          [row.code, row.label, row.hours, row.type, row.isActive ?? row.is_active ?? true]
+          `INSERT INTO "shift_codes" ("code", "label", "hours", "type", "is_active", "color") VALUES ($1,$2,$3,$4,$5,$6)`,
+          [row.code, row.label, row.hours, row.type, row.isActive ?? row.is_active ?? true, row.color ?? null]
         );
       }
     }
@@ -207,13 +208,14 @@ router.post("/backup/restore", async (req, res): Promise<void> => {
           `INSERT INTO "employees" (
             "id","name","country","contract_percent","weekly_contract_hours",
             "homework_eligible","cowork_eligible","allowed_shift_codes",
-            "permanence_group","permanence_level","is_spoc","is_management",
+            "permanence_group","permanence_level","is_spoc","spoc_rotates","is_management",
             "prm_counter","holiday_hours_remaining","overtime_hours",
             "homework_days_used_this_year","preferred_jl_weekday",
             "day_code_preferences","prefers_height_adjustable_desk",
-            "department_id","preferred_office_id","notes","created_at","updated_at"
+            "department_id","preferred_office_id","onsite_week_ratio","display_order",
+            "notes","created_at","updated_at"
           ) OVERRIDING SYSTEM VALUE VALUES (
-            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24
+            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27
           )`,
           [
             row.id, row.name, row.country ?? "lu",
@@ -225,6 +227,7 @@ router.post("/backup/restore", async (req, res): Promise<void> => {
             row.permanenceGroup ?? row.permanence_group ?? null,
             row.permanenceLevel ?? row.permanence_level ?? null,
             row.isSpoc ?? row.is_spoc ?? false,
+            row.spocRotates ?? row.spoc_rotates ?? false,
             row.isManagement ?? row.is_management ?? false,
             row.prmCounter ?? row.prm_counter ?? 0,
             row.holidayHoursRemaining ?? row.holiday_hours_remaining ?? 273.6,
@@ -235,6 +238,8 @@ router.post("/backup/restore", async (req, res): Promise<void> => {
             row.prefersHeightAdjustableDesk ?? row.prefers_height_adjustable_desk ?? false,
             row.departmentId ?? row.department_id ?? null,
             row.preferredOfficeId ?? row.preferred_office_id ?? null,
+            row.onsiteWeekRatio ?? row.onsite_week_ratio ?? null,
+            row.displayOrder ?? row.display_order ?? 0,
             row.notes ?? null,
             row.createdAt ?? row.created_at ?? new Date().toISOString(),
             row.updatedAt ?? row.updated_at ?? new Date().toISOString(),
