@@ -368,10 +368,14 @@ export function generatePlanning(params: {
     }
   }
 
-  const fullWeekWorkingDays = [
-    ...workingDays.filter((d) => getWeekNumber(d) >= monthStartStr),
-    ...overflowWorkingDays,
-  ];
+  // This month's working days in complete weeks — used for JL/hours budgeting.
+  // Overflow days (from the next month) are intentionally excluded so JL substitution
+  // is not inflated by extra days that fall outside this month's contractual target.
+  const thisMonthPlanningDays = workingDays.filter((d) => getWeekNumber(d) >= monthStartStr);
+
+  // All planned working days: this month's full weeks + overflow into the next month.
+  // Used for desk tracking, violation checks, and the day-by-day generation loop.
+  const fullWeekWorkingDays = [...thisMonthPlanningDays, ...overflowWorkingDays];
   const fullWeekWorkingDaySet = new Set(fullWeekWorkingDays);
 
   const allDays = [
@@ -474,7 +478,8 @@ export function generatePlanning(params: {
   }
 
   // JL day assignment (pre-configured from monthly config)
-  const jlAssignments = distributeJlDays(employees, fullWeekWorkingDays, jlDays);
+  // Use only this month's days — overflow days are never JL.
+  const jlAssignments = distributeJlDays(employees, thisMonthPlanningDays, jlDays);
 
   // Per-employee contractual hours (scaled by contract %) with PRM counter compensation
   const empContractualHours: Record<number, number> = {};
@@ -502,8 +507,11 @@ export function generatePlanning(params: {
     const jlDates = jlAssignments[emp.id] ?? new Set();
     const reqOffDates = requestedOffMap[emp.id] ?? new Set();
 
-    // Candidate shift days = full-week working days that are not pre-assigned JL and not requested-off
-    const candidateShiftDays = fullWeekWorkingDays.filter((d) => !jlDates.has(d) && !reqOffDates.has(d));
+    // Candidate shift days for JL/hours budgeting = this month's full-week days only.
+    // Overflow days are excluded here so the JL substitution formula is not inflated.
+    const candidateShiftDays = thisMonthPlanningDays.filter((d) => !jlDates.has(d) && !reqOffDates.has(d));
+    // Overflow days always become shift days — they are never JL-substituted.
+    const overflowCandidateDays = overflowWorkingDays.filter((d) => !reqOffDates.has(d));
 
     // Compute how many JL substitutions are needed.
     // Strategy: use the full-time equivalent daily hours (contractualHours / workingDays) as
@@ -570,8 +578,11 @@ export function generatePlanning(params: {
     const subDates = pickJlSubstitutionDates(candidateShiftDays, neededJL, jlPreferredWeekdays, avoidJlWeekdays, getExpectedHours);
     jlSubstitutionDates[emp.id] = new Set(subDates);
 
-    // Actual shift days exclude both pre-assigned JL and substitution JL
-    const shiftDays = candidateShiftDays.filter((d) => !jlSubstitutionDates[emp.id].has(d));
+    // Actual shift days: this month's candidate days minus JL, plus overflow days (always shift)
+    const shiftDays = [
+      ...candidateShiftDays.filter((d) => !jlSubstitutionDates[emp.id].has(d)),
+      ...overflowCandidateDays,
+    ];
     empShiftDays[emp.id] = shiftDays;
 
     const canHomework =
