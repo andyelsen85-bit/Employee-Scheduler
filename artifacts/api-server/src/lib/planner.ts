@@ -388,6 +388,7 @@ export function generatePlanning(params: {
   // Overflow days (from the next month) are intentionally excluded so JL substitution
   // is not inflated by extra days that fall outside this month's contractual target.
   const thisMonthPlanningDays = workingDays.filter((d) => getWeekNumber(d) >= monthStartStr);
+  const thisMonthPlanningDaySet = new Set(thisMonthPlanningDays);
 
   // All planned working days: this month's full weeks + overflow into the next month.
   // Used for desk tracking, violation checks, and the day-by-day generation loop.
@@ -524,9 +525,27 @@ export function generatePlanning(params: {
     const jlDates = jlAssignments[emp.id] ?? new Set();
     const reqOffDates = requestedOffMap[emp.id] ?? new Set();
 
+    // Pre-compute locked entries for this employee in the current month's full-week days.
+    // These are manual overrides; they must be excluded from the candidate pool and their
+    // hours subtracted from the effective target so the formula doesn't over-generate JL.
+    const lockedEmpEntries = lockedEntries.filter(
+      (e) => e.employeeId === emp.id && thisMonthPlanningDaySet.has(e.date)
+    );
+    const lockedEmpDates = new Set(lockedEmpEntries.map((e) => e.date));
+    // Hours already committed via locked (manually entered) shift codes (not C0/JL which are 0h).
+    const lockedCurrentShiftHours = lockedEmpEntries.reduce((sum, e) => {
+      if (!e.shiftCode || e.shiftCode === "C0" || e.shiftCode === "JL") return sum;
+      return sum + (shiftCodes[e.shiftCode]?.hours ?? 0);
+    }, 0);
+    // Number of locked JL days — these reduce the JL budget so we don't add more on top.
+    const lockedCurrentJlCount = lockedEmpEntries.filter((e) => e.shiftCode === "JL").length;
+
     // Candidate shift days for JL/hours budgeting = this month's full-week days only.
     // Overflow days are excluded here so the JL substitution formula is not inflated.
-    const candidateShiftDays = thisMonthPlanningDays.filter((d) => !jlDates.has(d) && !reqOffDates.has(d));
+    // Locked days are also excluded — they are already committed and handled separately.
+    const candidateShiftDays = thisMonthPlanningDays.filter(
+      (d) => !jlDates.has(d) && !reqOffDates.has(d) && !lockedEmpDates.has(d)
+    );
     // Overflow days always become shift days — they are never JL-substituted.
     const overflowCandidateDays = overflowWorkingDays.filter((d) => !reqOffDates.has(d));
 
@@ -599,7 +618,11 @@ export function generatePlanning(params: {
     const proportionalJL = Math.ceil(candidateShiftDays.length * (1 - contractRatio));
 
     const prevOverflowShiftH = prevMonthOverflowShiftHoursByEmployee[emp.id] ?? 0;
-    const effectiveTarget = Math.max(0, empTarget - prevOverflowShiftH);
+    // Effective monthly target for the auto-planner's free (unlocked) candidate days:
+    //   empTarget  - prev-month overflow shift hours (e.g. Mar's Apr 1–3 entries)
+    //              - manually locked shift hours for the current month
+    // C0 and JL locked entries contribute 0h so they don't affect this sum.
+    const effectiveTarget = Math.max(0, empTarget - prevOverflowShiftH - lockedCurrentShiftHours);
 
     let hoursJL = 0;
     if (weightedAvgHours > 0 && totalExpectedIfAllShift > effectiveTarget) {
@@ -608,9 +631,15 @@ export function generatePlanning(params: {
 
     let neededJL = Math.max(proportionalJL, hoursJL);
 
-    // Reduce by JL days already planned in the previous month's overflow entries
-    // (the initial partial-week days of this month that were planned last month).
-    neededJL = Math.max(0, neededJL - (prevMonthOverflowJlCountByEmployee[emp.id] ?? 0));
+    // Reduce by JL days already planned:
+    //  a) Previous month's overflow entries for this month's initial partial-week days.
+    //  b) Manually locked JL entries within this month's full-week planning days.
+    neededJL = Math.max(
+      0,
+      neededJL -
+        (prevMonthOverflowJlCountByEmployee[emp.id] ?? 0) -
+        lockedCurrentJlCount
+    );
 
     // Guarantee ALL preferred-JL weekdays become JL — day preferences take priority over
     // the hours calculation. Any resulting hour shortfall is absorbed by the PRM counter.

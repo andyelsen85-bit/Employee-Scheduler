@@ -714,9 +714,14 @@ router.post("/planning/:year/:month/entries", async (req, res): Promise<void> =>
       ),
     );
 
+  // A null shiftCode means the user is explicitly clearing this day back to "unplanned".
+  // In that case we unlock the entry so the next generation can auto-fill it.
+  const clearingShift = shiftCode === null;
+  const shouldLock = !clearingShift;
+
   let row;
   if (existing) {
-    const update: Partial<typeof planningEntriesTable.$inferInsert> = { isLocked: true };
+    const update: Partial<typeof planningEntriesTable.$inferInsert> = { isLocked: shouldLock };
     if (shiftCode !== undefined) update.shiftCode = shiftCode ?? null;
     if (deskCode !== undefined) update.deskCode = deskCode ?? null;
     [row] = await db
@@ -733,7 +738,7 @@ router.post("/planning/:year/:month/entries", async (req, res): Promise<void> =>
         date,
         shiftCode: shiftCode ?? null,
         deskCode: deskCode ?? null,
-        isLocked: true,
+        isLocked: shouldLock,
         isPermanence: false,
         permanenceLevel: null,
         requestedOff: false,
@@ -773,7 +778,15 @@ router.put("/planning/entries/:id", async (req, res): Promise<void> => {
   if (parsed.data.permanenceLevel !== undefined) updateData.permanenceLevel = parsed.data.permanenceLevel ?? null;
   if (parsed.data.requestedOff !== undefined) updateData.requestedOff = parsed.data.requestedOff;
   if (parsed.data.notes !== undefined) updateData.notes = parsed.data.notes ?? null;
-  updateData.isLocked = true;
+  // Explicitly clearing the shift code (null) means the user wants this day auto-planned
+  // on the next generation. Unlock it so the planner can fill it in.
+  // If shiftCode is not part of this update (desk, notes, etc.), always lock — any manual
+  // touch to an entry's metadata is an intentional override.
+  if (parsed.data.shiftCode !== undefined) {
+    updateData.isLocked = parsed.data.shiftCode !== null;
+  } else {
+    updateData.isLocked = true;
+  }
 
   const [row] = await db
     .update(planningEntriesTable)
