@@ -116,6 +116,17 @@ router.post("/backup/restore", async (req, res): Promise<void> => {
       RESTART IDENTITY CASCADE
     `);
 
+    // Ensure a value is a proper JSON string for JSONB columns.
+    // pg serializes JS arrays as PostgreSQL array literals ({"a","b"}) instead of
+    // JSON arrays (["a","b"]) unless we stringify first.
+    function toJsonb(val: unknown): string {
+      if (typeof val === "string") {
+        // Already a JSON string (e.g. from an old export that stored text)
+        try { JSON.parse(val); return val; } catch { /* fall through */ }
+      }
+      return JSON.stringify(val);
+    }
+
     // Helper to insert rows into a table with explicit IDs (OVERRIDING SYSTEM VALUE)
     async function insertRows(
       tableName: string,
@@ -149,8 +160,8 @@ router.post("/backup/restore", async (req, res): Promise<void> => {
             row.id,
             row.name,
             row.deskCount ?? row.desk_count ?? 0,
-            JSON.stringify(row.deskCodes ?? row.desk_codes ?? []),
-            row.heightAdjustableDesks ?? row.height_adjustable_desks ?? 0,
+            toJsonb(row.deskCodes ?? row.desk_codes ?? []),
+            toJsonb(row.heightAdjustableDesks ?? row.height_adjustable_desks ?? []),
             row.createdAt ?? row.created_at ?? new Date().toISOString(),
           ]
         );
@@ -172,8 +183,22 @@ router.post("/backup/restore", async (req, res): Promise<void> => {
     await insertRows("public_holidays", ph, ["id", "date", "name", "country"], true);
 
     const mc = tables.monthlyConfigs as Record<string, unknown>[];
-    await insertRows("monthly_configs", mc,
-      ["id", "year", "month", "contractual_hours", "jl_days", "notes"], true);
+    if (mc.length > 0) {
+      for (const row of mc) {
+        await client.query(
+          `INSERT INTO "monthly_configs" ("id","year","month","contractual_hours","jl_days","notes")
+           OVERRIDING SYSTEM VALUE VALUES ($1,$2,$3,$4,$5,$6)`,
+          [
+            row.id,
+            row.year,
+            row.month,
+            row.contractualHours ?? row.contractual_hours ?? 0,
+            row.jlDays ?? row.jl_days ?? 0,
+            row.notes ?? null,
+          ]
+        );
+      }
+    }
 
     const emps = tables.employees as Record<string, unknown>[];
     if (emps.length > 0) {
