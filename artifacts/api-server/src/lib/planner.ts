@@ -319,6 +319,12 @@ export function generatePlanning(params: {
    * The office ID that SPOC rotation employees should be sent to during their rotation week.
    */
   spocRotationOfficeId?: number | null;
+  /**
+   * Per-employee count of JL days that were already planned in the previous month's overflow
+   * entries for this month's initial partial-week days.  Used to reduce the JL substitution
+   * budget so the planner doesn't generate more JL days than needed.
+   */
+  prevMonthOverflowJlCountByEmployee?: Record<number, number>;
 }): { entries: PlanningEntryInput[]; violations: PlanningViolation[] } {
   const {
     year,
@@ -331,6 +337,7 @@ export function generatePlanning(params: {
     contractualHours,
     requestedDaysOff,
     lockedEntries = [],
+    prevMonthOverflowJlCountByEmployee = {},
     permanenceAssignments: externalPermanenceAssignments,
     spocRotationAssignments = {},
     spocRotationOfficeId,
@@ -377,6 +384,7 @@ export function generatePlanning(params: {
   // Used for desk tracking, violation checks, and the day-by-day generation loop.
   const fullWeekWorkingDays = [...thisMonthPlanningDays, ...overflowWorkingDays];
   const fullWeekWorkingDaySet = new Set(fullWeekWorkingDays);
+  const overflowWorkingDaySet = new Set(overflowWorkingDays);
 
   const allDays = [
     ...eachDayOfInterval({
@@ -564,7 +572,9 @@ export function generatePlanning(params: {
     if (weightedAvgHours > 0 && totalExpectedIfAllShift > empTarget) {
       neededJL = candidateShiftDays.length - Math.ceil(empTarget / weightedAvgHours);
     }
-    neededJL = Math.max(0, neededJL);
+    // Reduce by JL days already planned in the previous month's overflow entries
+    // (the initial partial-week days of this month that were planned last month).
+    neededJL = Math.max(0, neededJL - (prevMonthOverflowJlCountByEmployee[emp.id] ?? 0));
 
     // Guarantee ALL preferred-JL weekdays become JL — day preferences take priority over
     // the hours calculation. Any resulting hour shortfall is absorbed by the PRM counter.
@@ -578,10 +588,19 @@ export function generatePlanning(params: {
     const subDates = pickJlSubstitutionDates(candidateShiftDays, neededJL, jlPreferredWeekdays, avoidJlWeekdays, getExpectedHours);
     jlSubstitutionDates[emp.id] = new Set(subDates);
 
-    // Actual shift days: this month's candidate days minus JL, plus overflow days (always shift)
+    // Overflow days respect JL weekday preferences — if the employee prefers JL on a given
+    // weekday and an overflow day falls on that weekday, it also becomes a JL substitution.
+    for (const d of overflowCandidateDays) {
+      const dow = getDayOfWeek0Mon(d);
+      if (jlPreferredWeekdays.includes(dow)) {
+        jlSubstitutionDates[emp.id].add(d);
+      }
+    }
+
+    // Actual shift days: this month's candidate days minus JL, plus overflow days minus JL-preference days
     const shiftDays = [
       ...candidateShiftDays.filter((d) => !jlSubstitutionDates[emp.id].has(d)),
-      ...overflowCandidateDays,
+      ...overflowCandidateDays.filter((d) => !jlSubstitutionDates[emp.id].has(d)),
     ];
     empShiftDays[emp.id] = shiftDays;
 
@@ -665,7 +684,9 @@ export function generatePlanning(params: {
   const remainingShiftDays: Record<number, number> = {};
   for (const emp of employees) {
     remainingHours[emp.id] = empContractualHours[emp.id];
-    remainingShiftDays[emp.id] = empShiftDays[emp.id].length;
+    // Exclude overflow days from the shift-day count so hour distribution is based
+    // entirely on this month's working days, matching the contractual hours target.
+    remainingShiftDays[emp.id] = empShiftDays[emp.id].filter((d) => !overflowWorkingDaySet.has(d)).length;
   }
 
   // Round-robin rotation index per employee per day-of-week.
@@ -707,10 +728,11 @@ export function generatePlanning(params: {
       if (lockedSlots.has(`${emp.id}-${dateStr}`)) {
         // Still count the locked entry's hours so violation checks are accurate
         const locked = lockedEntries.find((e) => e.employeeId === emp.id && e.date === dateStr);
+        const isLockedOverflow = overflowWorkingDaySet.has(dateStr);
         if (locked?.shiftCode) {
           const h = hoursForCode(locked.shiftCode, shiftCodes);
           plannedHoursByEmployee[emp.id] = (plannedHoursByEmployee[emp.id] ?? 0) + h;
-          remainingHours[emp.id] = (remainingHours[emp.id] ?? 0) - h;
+          if (!isLockedOverflow) remainingHours[emp.id] = (remainingHours[emp.id] ?? 0) - h;
           const lockedType = shiftCodes[locked.shiftCode]?.type;
           if (lockedType === "onsite") {
             onsiteCountByEmployee[emp.id] = (onsiteCountByEmployee[emp.id] ?? 0) + 1;
@@ -718,7 +740,9 @@ export function generatePlanning(params: {
             nonOnsiteWorkCountByEmployee[emp.id] = (nonOnsiteWorkCountByEmployee[emp.id] ?? 0) + 1;
           }
         }
-        remainingShiftDays[emp.id] = Math.max(0, (remainingShiftDays[emp.id] ?? 1) - 1);
+        if (!isLockedOverflow) {
+          remainingShiftDays[emp.id] = Math.max(0, (remainingShiftDays[emp.id] ?? 1) - 1);
+        }
         continue;
       }
 
@@ -774,9 +798,15 @@ export function generatePlanning(params: {
         continue;
       }
 
-      // Running-balance daily target
+      // Running-balance daily target.
+      // Overflow days use a fixed rate (base monthly hours ÷ this month's shift days) so they
+      // don't draw from the contractual budget, keeping this month's hour total accurate.
+      const isOverflowDay = overflowWorkingDaySet.has(dateStr);
+      const thisMonthShiftCount = empShiftDays[emp.id].filter((d) => !overflowWorkingDaySet.has(d)).length;
       const shiftDaysLeft = Math.max(1, remainingShiftDays[emp.id] ?? 1);
-      const dailyTarget = (remainingHours[emp.id] ?? 0) / shiftDaysLeft;
+      const dailyTarget = isOverflowDay
+        ? (empBaseContractualHours[emp.id] / Math.max(1, thisMonthShiftCount))
+        : (remainingHours[emp.id] ?? 0) / shiftDaysLeft;
 
       // Get pre-determined type for this week (weekly grouping)
       let preferredType: "onsite" | "homework" | "cowork" =
@@ -1004,8 +1034,11 @@ export function generatePlanning(params: {
       }
 
       plannedHoursByEmployee[emp.id] = (plannedHoursByEmployee[emp.id] ?? 0) + assignedHours;
-      remainingHours[emp.id] = (remainingHours[emp.id] ?? 0) - assignedHours;
-      remainingShiftDays[emp.id] = Math.max(0, (remainingShiftDays[emp.id] ?? 0) - 1);
+      // Overflow days don't consume this month's hour/day budget
+      if (!isOverflowDay) {
+        remainingHours[emp.id] = (remainingHours[emp.id] ?? 0) - assignedHours;
+        remainingShiftDays[emp.id] = Math.max(0, (remainingShiftDays[emp.id] ?? 0) - 1);
+      }
 
       entries.push({
         employeeId: emp.id,
@@ -1030,7 +1063,8 @@ export function generatePlanning(params: {
 
     const shiftDaysForEmp = empShiftDays[emp.id] ?? [];
     const empTarget = empContractualHours[emp.id];
-    const dailyTarget = shiftDaysForEmp.length > 0 ? empTarget / shiftDaysForEmp.length : 8;
+    const thisMonthShiftCountP3 = shiftDaysForEmp.filter((d) => !overflowWorkingDaySet.has(d)).length;
+    const dailyTarget = thisMonthShiftCountP3 > 0 ? empTarget / thisMonthShiftCountP3 : 8;
     const onsiteCode = bestCodeByTarget("onsite", emp.allowedShiftCodes, shiftCodes, dailyTarget);
     if (!onsiteCode) continue;
 

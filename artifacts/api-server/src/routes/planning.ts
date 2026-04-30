@@ -297,11 +297,46 @@ router.post("/planning/:year/:month/generate", async (req, res): Promise<void> =
       requestedOff: e.requestedOff,
     }));
 
-  // Build permanence assignments using ISO week numbers + manual overrides,
-  // matching exactly what the Permanence page shows.
-  const [precomputedPermanence, spocRotation] = await Promise.all([
+  // Build permanence assignments and fetch previous month's overflow JL entries in parallel.
+  const firstDay = new Date(`${year}-${String(month).padStart(2, "0")}-01T12:00:00Z`);
+  const firstDayDow = firstDay.getUTCDay(); // 0=Sun … 6=Sat
+  const numInitialPartialDays = firstDayDow === 1 ? 0 : firstDayDow === 0 ? 1 : 8 - firstDayDow;
+
+  const [precomputedPermanence, spocRotation, prevMonthOverflowJlCountByEmployee] = await Promise.all([
     buildPermanenceAssignments(year, month),
     buildSpocRotationAssignments(year, month),
+    (async (): Promise<Record<number, number>> => {
+      if (numInitialPartialDays === 0) return {};
+      const partialDays: string[] = [];
+      for (let i = 0; i < numInitialPartialDays; i++) {
+        partialDays.push(
+          `${year}-${String(month).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}`
+        );
+      }
+      const prevY = month === 1 ? year - 1 : year;
+      const prevM = month === 1 ? 12 : month - 1;
+      const prevPmRows = await db
+        .select()
+        .from(planningMonthsTable)
+        .where(and(eq(planningMonthsTable.year, prevY), eq(planningMonthsTable.month, prevM)));
+      if (prevPmRows.length === 0) return {};
+      const prevEntries = await db
+        .select()
+        .from(planningEntriesTable)
+        .where(
+          and(
+            eq(planningEntriesTable.planningMonthId, prevPmRows[0].id),
+            inArray(planningEntriesTable.date, partialDays)
+          )
+        );
+      const counts: Record<number, number> = {};
+      for (const e of prevEntries) {
+        if (e.shiftCode === "JL") {
+          counts[e.employeeId] = (counts[e.employeeId] ?? 0) + 1;
+        }
+      }
+      return counts;
+    })(),
   ]);
 
   const { entries, violations } = generatePlanning({
@@ -346,6 +381,7 @@ router.post("/planning/:year/:month/generate", async (req, res): Promise<void> =
     permanenceAssignments: precomputedPermanence,
     spocRotationAssignments: spocRotation.assignments,
     spocRotationOfficeId: spocRotation.officeId,
+    prevMonthOverflowJlCountByEmployee,
   });
 
   // Delete all non-locked entries, then insert newly generated ones
@@ -454,7 +490,43 @@ router.post("/planning/:year/:month/generate/employee/:employeeId", async (req, 
       requestedOff: e.requestedOff,
     }));
 
-  const precomputedPermanence = await buildPermanenceAssignments(year, month);
+  const firstDaySingle = new Date(`${year}-${String(month).padStart(2, "0")}-01T12:00:00Z`);
+  const firstDayDowSingle = firstDaySingle.getUTCDay();
+  const numInitialPartialDaysSingle = firstDayDowSingle === 1 ? 0 : firstDayDowSingle === 0 ? 1 : 8 - firstDayDowSingle;
+
+  const [precomputedPermanence, prevMonthOverflowJlCountByEmployeeSingle] = await Promise.all([
+    buildPermanenceAssignments(year, month),
+    (async (): Promise<Record<number, number>> => {
+      if (numInitialPartialDaysSingle === 0) return {};
+      const partialDays: string[] = [];
+      for (let i = 0; i < numInitialPartialDaysSingle; i++) {
+        partialDays.push(
+          `${year}-${String(month).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}`
+        );
+      }
+      const prevY = month === 1 ? year - 1 : year;
+      const prevM = month === 1 ? 12 : month - 1;
+      const prevPmRows = await db
+        .select()
+        .from(planningMonthsTable)
+        .where(and(eq(planningMonthsTable.year, prevY), eq(planningMonthsTable.month, prevM)));
+      if (prevPmRows.length === 0) return {};
+      const prevEntries = await db
+        .select()
+        .from(planningEntriesTable)
+        .where(
+          and(
+            eq(planningEntriesTable.planningMonthId, prevPmRows[0].id),
+            inArray(planningEntriesTable.date, partialDays)
+          )
+        );
+      const counts: Record<number, number> = {};
+      for (const e of prevEntries) {
+        if (e.shiftCode === "JL") counts[e.employeeId] = (counts[e.employeeId] ?? 0) + 1;
+      }
+      return counts;
+    })(),
+  ]);
 
   const { entries, violations } = generatePlanning({
     year,
@@ -478,6 +550,7 @@ router.post("/planning/:year/:month/generate/employee/:employeeId", async (req, 
       dayCodePreferences: Array.isArray(e.dayCodePreferences) ? (e.dayCodePreferences as import("../lib/planner.js").DayCodePreference[]) : [],
       prefersHeightAdjustableDesk: e.prefersHeightAdjustableDesk ?? false,
       preferredOfficeId: e.preferredOfficeId ?? null,
+      onsiteWeekRatio: e.onsiteWeekRatio ?? null,
     })),
     offices: officesWithEmps,
     shiftCodes,
@@ -495,6 +568,7 @@ router.post("/planning/:year/:month/generate/employee/:employeeId", async (req, 
     })),
     lockedEntries,
     permanenceAssignments: precomputedPermanence,
+    prevMonthOverflowJlCountByEmployee: prevMonthOverflowJlCountByEmployeeSingle,
   });
 
   // Delete only the target employee's non-locked entries, then insert their new ones
