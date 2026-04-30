@@ -211,41 +211,29 @@ function pickJlSubstitutionDates(
   neededJL: number,
   preferredWeekdays: number[],
   avoidWeekdays: Set<number> = new Set(),
-  expectedHoursForDate: (d: string) => number = () => 8,
-  pinnedDates: Set<string> = new Set()
+  expectedHoursForDate: (d: string) => number = () => 8
 ): string[] {
   if (neededJL <= 0 || candidateShiftDays.length === 0) return [];
   const n = Math.min(neededJL, candidateShiftDays.length - 1);
 
+  const preferredSet = new Set(preferredWeekdays);
+
+  // Tier 1: explicit JL preference weekdays
+  const tier1 = shuffle(candidateShiftDays.filter((d) => preferredSet.has(getDayOfWeek0Mon(d))));
+  // Tier 2: neutral days (no preference, not asked to avoid)
+  const tier2 = shuffle(
+    candidateShiftDays.filter((d) => !preferredSet.has(getDayOfWeek0Mon(d)) && !avoidWeekdays.has(getDayOfWeek0Mon(d)))
+  );
+  // Tier 3: days with a code preference — pick highest-hour days first to preserve low-hour preference days
+  const tier3 = candidateShiftDays
+    .filter((d) => !preferredSet.has(getDayOfWeek0Mon(d)) && avoidWeekdays.has(getDayOfWeek0Mon(d)))
+    .sort((a, b) => expectedHoursForDate(b) - expectedHoursForDate(a));
+
   const result: string[] = [];
-
-  // Pinned dates (pre-configured JL from monthly config) are chosen first.
-  for (const d of pinnedDates) {
+  for (const d of [...tier1, ...tier2, ...tier3]) {
     if (result.length >= n) break;
-    if (candidateShiftDays.includes(d)) result.push(d);
+    result.push(d);
   }
-
-  if (result.length < n) {
-    const preferredSet = new Set(preferredWeekdays);
-    const unpinned = candidateShiftDays.filter((d) => !pinnedDates.has(d));
-
-    // Tier 1: explicit JL preference weekdays
-    const tier1 = shuffle(unpinned.filter((d) => preferredSet.has(getDayOfWeek0Mon(d))));
-    // Tier 2: neutral days (no preference, not asked to avoid)
-    const tier2 = shuffle(
-      unpinned.filter((d) => !preferredSet.has(getDayOfWeek0Mon(d)) && !avoidWeekdays.has(getDayOfWeek0Mon(d)))
-    );
-    // Tier 3: days with a code preference — pick highest-hour days first to preserve low-hour preference days
-    const tier3 = unpinned
-      .filter((d) => !preferredSet.has(getDayOfWeek0Mon(d)) && avoidWeekdays.has(getDayOfWeek0Mon(d)))
-      .sort((a, b) => expectedHoursForDate(b) - expectedHoursForDate(a));
-
-    for (const d of [...tier1, ...tier2, ...tier3]) {
-      if (result.length >= n) break;
-      result.push(d);
-    }
-  }
-
   return result;
 }
 
@@ -527,15 +515,12 @@ export function generatePlanning(params: {
   const jlSubstitutionDates: Record<number, Set<string>> = {};
 
   for (const emp of employees) {
-    const jlDates = jlAssignments[emp.id] ?? new Set<string>();
+    const jlDates = jlAssignments[emp.id] ?? new Set();
     const reqOffDates = requestedOffMap[emp.id] ?? new Set();
 
-    // All work days = full-week planning days minus requested-off days.
-    // Pre-configured JL days (from monthly config) are kept in the pool so the formula can
-    // decide whether those slots are actually needed as JL for this employee this month.
-    // If the formula says 0 JL, the pre-configured day becomes a regular shift day instead of
-    // wasting it (which would push the employee further below their monthly target).
-    const allWorkDays = thisMonthPlanningDays.filter((d) => !reqOffDates.has(d));
+    // Candidate shift days for JL/hours budgeting = this month's full-week days only.
+    // Overflow days are excluded here so the JL substitution formula is not inflated.
+    const candidateShiftDays = thisMonthPlanningDays.filter((d) => !jlDates.has(d) && !reqOffDates.has(d));
     // Overflow days always become shift days — they are never JL-substituted.
     const overflowCandidateDays = overflowWorkingDays.filter((d) => !reqOffDates.has(d));
 
@@ -548,7 +533,7 @@ export function generatePlanning(params: {
     const regularHours = regularCodes.map((c) => shiftCodes[c]?.hours ?? 0).filter((h) => h > 0);
 
     // Full-time reference: what daily hours would a 100% employee get?
-    const fteDaily = allWorkDays.length > 0 ? contractualHours / allWorkDays.length : 8;
+    const fteDaily = candidateShiftDays.length > 0 ? contractualHours / candidateShiftDays.length : 8;
     // Typical shift = the code hours closest to the full-time daily reference
     const typicalShiftHours = regularHours.length > 0
       ? regularHours.reduce((best, h) => Math.abs(h - fteDaily) <= Math.abs(best - fteDaily) ? h : best, regularHours[0])
@@ -567,11 +552,11 @@ export function generatePlanning(params: {
       return avg;
     };
 
-    // Preference-weighted total: sum of expected hours if all work days were shift days
-    const totalExpectedIfAllShift = allWorkDays.reduce((s, d) => s + getExpectedHours(d), 0);
+    // Preference-weighted total: sum of expected hours if all candidate days were shift days
+    const totalExpectedIfAllShift = candidateShiftDays.reduce((s, d) => s + getExpectedHours(d), 0);
     // Average expected hours per shift day (accounts for short-hour preference codes like TT4)
-    const weightedAvgHours = allWorkDays.length > 0
-      ? totalExpectedIfAllShift / allWorkDays.length
+    const weightedAvgHours = candidateShiftDays.length > 0
+      ? totalExpectedIfAllShift / candidateShiftDays.length
       : (typicalShiftHours ?? 8);
 
     // Derive preferred JL weekdays from day code preferences (entries where code === "JL")
@@ -592,22 +577,18 @@ export function generatePlanning(params: {
     // 1. Contract-proportional: an N% employee should work N% of available shift
     //    days — the rest become JL. This is the primary driver for part-time
     //    employees where full-week hours might be < monthly target.
-    //    e.g. Marc 80%, 14 candidate days → ceil(14 × 0.2) = 3 JL days.
+    //    e.g. Marc 80%, 13 candidate days → ceil(13 × 0.2) = 3 JL days.
     //
     // 2. Hours-based: when working every candidate day would overshoot the target,
     //    convert enough shift days to JL to stay within the budget.
     //    e.g. Dirk V 100%, 9h codes, 22 days, 176h target →
     //         ceil(22 − 176/9) = ceil(2.44) = 3 JL days.
-    //
-    // Note: formula runs against allWorkDays (pre-configured JL included in pool).
-    // This means if the formula gives 0, the pre-configured JL slot becomes a normal
-    // shift day — it is NOT wasted when the employee is already under their target.
     const contractRatio = (emp.contractPercent ?? 100) / 100;
-    const proportionalJL = Math.ceil(allWorkDays.length * (1 - contractRatio));
+    const proportionalJL = Math.ceil(candidateShiftDays.length * (1 - contractRatio));
 
     let hoursJL = 0;
     if (weightedAvgHours > 0 && totalExpectedIfAllShift > empTarget) {
-      hoursJL = Math.ceil(allWorkDays.length - empTarget / weightedAvgHours);
+      hoursJL = Math.ceil(candidateShiftDays.length - empTarget / weightedAvgHours);
     }
 
     let neededJL = Math.max(proportionalJL, hoursJL);
@@ -619,16 +600,13 @@ export function generatePlanning(params: {
     // Guarantee ALL preferred-JL weekdays become JL — day preferences take priority over
     // the hours calculation. Any resulting hour shortfall is absorbed by the PRM counter.
     if (jlPreferredWeekdays.length > 0) {
-      const preferredJLdaysCount = allWorkDays.filter(
+      const preferredJLdaysCount = candidateShiftDays.filter(
         (d) => jlPreferredWeekdays.includes(getDayOfWeek0Mon(d))
       ).length;
       neededJL = Math.max(neededJL, preferredJLdaysCount);
     }
 
-    // pickJlSubstitutionDates selects from allWorkDays (all candidate days including pre-configured
-    // JL slots). Pre-configured JL dates are passed as pinnedDates so they are preferred when the
-    // formula says JL is needed, but skipped entirely when neededJL = 0.
-    const subDates = pickJlSubstitutionDates(allWorkDays, neededJL, jlPreferredWeekdays, avoidJlWeekdays, getExpectedHours, jlDates);
+    const subDates = pickJlSubstitutionDates(candidateShiftDays, neededJL, jlPreferredWeekdays, avoidJlWeekdays, getExpectedHours);
     jlSubstitutionDates[emp.id] = new Set(subDates);
 
     // Overflow days respect JL weekday preferences — if the employee prefers JL on a given
@@ -640,9 +618,9 @@ export function generatePlanning(params: {
       }
     }
 
-    // Actual shift days: all work days minus JL substitutions, plus overflow days minus JL-preference days
+    // Actual shift days: this month's candidate days minus JL, plus overflow days minus JL-preference days
     const shiftDays = [
-      ...allWorkDays.filter((d) => !jlSubstitutionDates[emp.id].has(d)),
+      ...candidateShiftDays.filter((d) => !jlSubstitutionDates[emp.id].has(d)),
       ...overflowCandidateDays.filter((d) => !jlSubstitutionDates[emp.id].has(d)),
     ];
     empShiftDays[emp.id] = shiftDays;
@@ -811,7 +789,22 @@ export function generatePlanning(params: {
         continue;
       }
 
-      // JL substitution day — either formula-based or pre-configured (both now in jlSubstitutionDates)
+      // Pre-assigned JL day (from monthly config)
+      if ((jlAssignments[emp.id] ?? new Set()).has(dateStr) && emp.allowedShiftCodes.includes("JL")) {
+        entries.push({
+          employeeId: emp.id,
+          date: dateStr,
+          shiftCode: "JL",
+          deskCode: null,
+          isPermanence: false,
+          permanenceLevel: null,
+          isLocked: false,
+          requestedOff: false,
+        });
+        continue;
+      }
+
+      // JL substitution day (pre-computed in Phase 1 to avoid hour overshoot)
       if (jlSubstitutionDates[emp.id]?.has(dateStr)) {
         entries.push({
           employeeId: emp.id,
