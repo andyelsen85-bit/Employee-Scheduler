@@ -13,6 +13,7 @@ export default function BackupRestore() {
   const [restoreDetail, setRestoreDetail] = useState<string>("");
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [pendingJson, setPendingJson] = useState<unknown>(null);
   const [backupMeta, setBackupMeta] = useState<{ exportedAt: string; tables: Record<string, number> } | null>(null);
 
   function handleExport() {
@@ -46,6 +47,7 @@ export default function BackupRestore() {
           ),
         });
         setPendingFile(file);
+        setPendingJson(json);
         setConfirmVisible(true);
       } catch {
         toast({ title: "Cannot read file", description: "The selected file is not valid JSON.", variant: "destructive" });
@@ -56,22 +58,26 @@ export default function BackupRestore() {
   }
 
   async function handleRestore() {
-    if (!pendingFile) return;
+    if (!pendingJson) return;
     setConfirmVisible(false);
     setRestoreState("loading");
     setRestoreDetail("");
     try {
-      const text = await pendingFile.text();
-      const json = JSON.parse(text);
       const resp = await fetch("/api/backup/restore", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(json),
+        body: JSON.stringify(pendingJson),
       });
-      const data = await resp.json() as { ok?: boolean; error?: string; detail?: string };
+      let data: { ok?: boolean; error?: string; detail?: string; restoredAt?: string } = {};
+      try {
+        data = await resp.json() as typeof data;
+      } catch {
+        // server returned non-JSON (e.g. 413 too large)
+        throw new Error(`Server error ${resp.status}: ${resp.statusText}`);
+      }
       if (!resp.ok || !data.ok) {
         setRestoreState("error");
-        setRestoreDetail(data.detail ?? data.error ?? "Unknown error");
+        setRestoreDetail(data.detail ?? data.error ?? `Server error ${resp.status}`);
         return;
       }
       setRestoreState("success");
@@ -82,6 +88,7 @@ export default function BackupRestore() {
       setRestoreDetail(String(err));
     } finally {
       setPendingFile(null);
+      setPendingJson(null);
       setBackupMeta(null);
     }
   }
@@ -234,7 +241,7 @@ export default function BackupRestore() {
               <div className="flex gap-3 justify-end">
                 <Button
                   variant="outline"
-                  onClick={() => { setConfirmVisible(false); setPendingFile(null); setBackupMeta(null); }}
+                  onClick={() => { setConfirmVisible(false); setPendingFile(null); setPendingJson(null); setBackupMeta(null); }}
                 >
                   Cancel
                 </Button>
