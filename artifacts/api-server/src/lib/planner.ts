@@ -1,4 +1,4 @@
-import { addDays, format, getDay, startOfMonth, endOfMonth, eachDayOfInterval, parseISO, isAfter } from "date-fns";
+import { addDays, format, getDay, startOfMonth, endOfMonth, startOfDay, eachDayOfInterval, parseISO, isAfter } from "date-fns";
 
 export type ShiftCodeRecord = {
   code: string;
@@ -363,7 +363,11 @@ export function generatePlanning(params: {
   const overflowCalendarDays: string[] = [];
   const overflowWorkingDays: string[] = [];
   if (isAfter(lastWeekFriday, monthEndDate)) {
-    let d = addDays(monthEndDate, 1);
+    // Start at midnight so the loop boundary comparison is consistent with lastWeekFriday
+    // which is also midnight (from parseISO on a date-only string). Without this, endOfMonth()
+    // gives T23:59:59.999 which propagates through addDays and makes the last overflow day
+    // appear "after" lastWeekFriday (T00:00:00), causing it to be silently skipped.
+    let d = addDays(startOfDay(monthEndDate), 1);
     while (!isAfter(d, lastWeekFriday)) {
       const dayStr = format(d, "yyyy-MM-dd");
       overflowCalendarDays.push(dayStr);
