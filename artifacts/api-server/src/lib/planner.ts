@@ -580,10 +580,12 @@ export function generatePlanning(params: {
       (e) => e.employeeId === emp.id && thisMonthPlanningDaySet.has(e.date)
     );
     const lockedEmpDates = new Set(lockedEmpEntries.map((e) => e.date));
-    // Hours already committed via locked (manually entered) shift codes (not C0/JL which are 0h).
+    // Hours already committed via locked (manually entered) shift codes (not holiday/JL which are 0h).
     const lockedCurrentShiftHours = lockedEmpEntries.reduce((sum, e) => {
-      if (!e.shiftCode || e.shiftCode === "C0" || e.shiftCode === "JL") return sum;
-      return sum + (shiftCodes[e.shiftCode]?.hours ?? 0);
+      if (!e.shiftCode) return sum;
+      const sc = shiftCodes[e.shiftCode];
+      if (!sc || sc.type === "holiday" || sc.type === "jl") return sum;
+      return sum + sc.hours;
     }, 0);
     // Number of locked JL days — these reduce the JL budget so we don't add more on top.
     const lockedCurrentJlCount = lockedEmpEntries.filter((e) => e.shiftCode === "JL").length;
@@ -663,7 +665,27 @@ export function generatePlanning(params: {
     // are visible to the user and count toward the monthly total, so the planner
     // must not double-budget for them.
     const contractRatio = (emp.contractPercent ?? 100) / 100;
-    const proportionalJL = Math.ceil(candidateShiftDays.length * (1 - contractRatio));
+
+    // Count locked holiday (C0-type) entries in the planning days — these are already committed
+    // non-shift days that count against the part-time employee's non-working proportion.
+    // Must be accounted for BEFORE computing proportionalJL so we don't double-penalise the employee.
+    const lockedC0Count = lockedEmpEntries.filter(
+      (e) => e.shiftCode && shiftCodes[e.shiftCode]?.type === "holiday"
+    ).length;
+    // Pre-config JL days already distributed (from distributeJlDays) — also committed non-shift days.
+    const preConfigJlCount = jlDates.size;
+
+    // Contract-proportional JL: compute over ALL thisMonthPlanningDays, then subtract already-
+    // committed non-shift days (locked C0 and pre-config JL).
+    //
+    // Example — Ben 50%, 20 planning days, 5 locked C0, 1 pre-config JL:
+    //   Old formula: ceil(14 candidateDays × 0.5) = 7  → 1 + 7 = 8 JL total  ❌
+    //   New formula: ceil(20 × 0.5) − 5 C0 − 1 preJL = 4 → 1 + 4 = 5 JL total  ✓
+    // (Old formula compounded the reduction: it ignored that C0 already fills half the non-working budget.)
+    const proportionalJL = Math.max(
+      0,
+      Math.ceil(thisMonthPlanningDays.length * (1 - contractRatio)) - lockedC0Count - preConfigJlCount
+    );
 
     const prevOverflowShiftH = prevMonthOverflowShiftHoursByEmployee[emp.id] ?? 0;
     // Effective monthly target for the auto-planner's free (unlocked) candidate days:
