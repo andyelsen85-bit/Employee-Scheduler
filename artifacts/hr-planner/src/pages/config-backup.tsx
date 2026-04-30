@@ -36,7 +36,7 @@ export default function BackupRestore() {
           exportedAt: string;
           tables: Record<string, unknown[]>;
         };
-        if (json.version !== 1 || !json.tables) {
+        if ((json.version !== 1 && json.version !== 2) || !json.tables) {
           toast({ title: "Invalid backup file", description: "The file does not appear to be a valid HR Planner backup.", variant: "destructive" });
           return;
         }
