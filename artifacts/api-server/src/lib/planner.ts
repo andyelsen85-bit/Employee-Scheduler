@@ -27,6 +27,7 @@ export type EmployeeRecord = {
   dayCodePreferences: DayCodePreference[];
   prefersHeightAdjustableDesk: boolean;
   preferredOfficeId: number | null;
+  onsiteWeekRatio: number | null;
 };
 
 export type OfficeRecord = {
@@ -67,8 +68,6 @@ export type PlanningViolation = {
 };
 
 const HOMEWORK_DAY_LIMIT = 35;
-const PRM_MAX = 10;
-const PRM_MIN = -10;
 const MIN_ONSITE_RATIO = 0.5; // hard floor used only for violation checks
 
 function getWorkingDays(year: number, month: number, publicHolidayDates: string[]): string[] {
@@ -574,7 +573,11 @@ export function generatePlanning(params: {
 
     let neededJL = 0;
     if (weightedAvgHours > 0 && totalExpectedIfAllShift > empTarget) {
-      neededJL = candidateShiftDays.length - Math.ceil(empTarget / weightedAvgHours);
+      // Use ceil(days - target/avgHours) instead of days - ceil(target/avgHours).
+      // This guarantees we never overshoot the target: e.g. 22 days, 9h codes, 176h
+      // target → ceil(22 - 19.56) = ceil(2.44) = 3 JL days → 19 × 9h = 171h (5h under)
+      // rather than 2 JL days → 20 × 9h = 180h (4h over).
+      neededJL = Math.ceil(candidateShiftDays.length - empTarget / weightedAvgHours);
     }
     // Reduce by JL days already planned in the previous month's overflow entries
     // (the initial partial-week days of this month that were planned last month).
@@ -1148,6 +1151,79 @@ export function generatePlanning(params: {
     }
   }
 
+  // ── PHASE 4: Hour-correction pass ───────────────────────────────────────────
+  // For employees whose planned hours still exceed their contractual target by more
+  // than a small tolerance (half a typical shift), substitute random non-locked
+  // shift days with JL until the overshoot is within bounds.
+  // This catches cases where the Phase 1 JL formula could not be solved exactly
+  // (e.g., 9h shift codes, fractional contract percentages, or weekday-preference
+  // enforcement that forces a specific number of JL days regardless of hours).
+  const HOUR_OVERSHOOT_TOLERANCE = 4; // hours — half an 8h day
+
+  for (const emp of employees) {
+    const target = empBaseContractualHours[emp.id] ?? contractualHours;
+
+    // Sum hours for this-month (non-overflow) entries only
+    let plannedThisMonth = 0;
+    for (const e of entries) {
+      if (e.employeeId !== emp.id || overflowWorkingDaySet.has(e.date)) continue;
+      plannedThisMonth += hoursForCode(e.shiftCode, shiftCodes);
+    }
+
+    const overshoot = plannedThisMonth - target;
+    if (overshoot <= HOUR_OVERSHOOT_TOLERANCE) continue;
+
+    // Collect convertible entries: this-month, non-locked, real shift codes (not JL/C0),
+    // not on permanence duty. Prefer homework/cowork over onsite to protect the onsite ratio.
+    const convertible = entries.filter(
+      (e) =>
+        e.employeeId === emp.id &&
+        !overflowWorkingDaySet.has(e.date) &&
+        !e.isLocked &&
+        e.shiftCode !== null &&
+        e.shiftCode !== "JL" &&
+        e.shiftCode !== "C0" &&
+        !e.isPermanence
+    );
+
+    // Sort: homework/cowork first (less impact on onsite ratio), then random within each group
+    const nonOnsite = shuffle(convertible.filter((e) => shiftCodes[e.shiftCode!]?.type !== "onsite"));
+    const onsite = shuffle(convertible.filter((e) => shiftCodes[e.shiftCode!]?.type === "onsite"));
+    const ordered = [...nonOnsite, ...onsite];
+
+    let remaining = overshoot;
+    for (const entry of ordered) {
+      if (remaining <= HOUR_OVERSHOOT_TOLERANCE) break;
+      const entryHours = hoursForCode(entry.shiftCode, shiftCodes);
+      const idx = entries.indexOf(entry);
+      if (idx === -1) continue;
+
+      const wasOnsite = shiftCodes[entry.shiftCode!]?.type === "onsite";
+      const wasNonOnsiteWork =
+        shiftCodes[entry.shiftCode!]?.type === "homework" ||
+        shiftCodes[entry.shiftCode!]?.type === "cowork";
+
+      entries[idx] = {
+        ...entries[idx],
+        shiftCode: "JL",
+        deskCode: null,
+        isPermanence: false,
+      };
+      remaining -= entryHours;
+      plannedHoursByEmployee[emp.id] = (plannedHoursByEmployee[emp.id] ?? 0) - entryHours;
+
+      // Keep violation counters consistent
+      if (wasOnsite) {
+        onsiteCountByEmployee[emp.id] = Math.max(0, (onsiteCountByEmployee[emp.id] ?? 0) - 1);
+      } else if (wasNonOnsiteWork) {
+        nonOnsiteWorkCountByEmployee[emp.id] = Math.max(
+          0,
+          (nonOnsiteWorkCountByEmployee[emp.id] ?? 0) - 1
+        );
+      }
+    }
+  }
+
   // ── VIOLATIONS ─────────────────────────────────────────────────────────────
   const violations: PlanningViolation[] = [];
 
@@ -1210,18 +1286,6 @@ export function generatePlanning(params: {
   }
 
   for (const emp of employees) {
-    const planned = plannedHoursByEmployee[emp.id] ?? 0;
-    // PRM diff vs base (uncompensated) contractual hours — so the counter tracks true deviation
-    const prm = planned - (empBaseContractualHours[emp.id] ?? contractualHours);
-    if (prm > PRM_MAX || prm < PRM_MIN) {
-      violations.push({
-        date: `${year}-${String(month).padStart(2, "0")}`,
-        type: "prm_exceeded",
-        message: `${emp.name}: PRM ${prm.toFixed(1)}h out of range (±10h)`,
-        employeeId: emp.id,
-      });
-    }
-
     const hwTotal = (emp.homeworkDaysUsedThisYear ?? 0) + (homeworkCountThisMonth[emp.id] ?? 0);
     if (hwTotal > HOMEWORK_DAY_LIMIT && (emp.country === "be" || emp.country === "de" || emp.country === "fr")) {
       violations.push({

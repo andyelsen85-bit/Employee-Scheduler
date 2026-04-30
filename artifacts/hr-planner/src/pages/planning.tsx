@@ -297,10 +297,6 @@ export default function Planning() {
       .reduce((sum, e) => sum + (shiftHoursMap.get(e.shiftCode!) ?? 0), 0);
   }
 
-  const totalPlannedHours = employees
-    ? employees.reduce((sum, emp) => sum + getEmployeePlannedHours(emp.id), 0)
-    : 0;
-
   const lockedCount = planning ? planning.entries.filter(e => e.isLocked && e.date.startsWith(currentMonthPrefix)).length : 0;
 
   return (
@@ -358,47 +354,6 @@ export default function Planning() {
             )}
           </div>
         </div>
-
-        {planning && employees && (
-          <div className="flex flex-wrap gap-3">
-            {employees.map(emp => {
-              const planned = getEmployeePlannedHours(emp.id);
-              const official = officialHours !== null
-                ? Math.round(officialHours * ((emp.contractPercent ?? 100) / 100) * 10) / 10
-                : null;
-              const diff = official !== null ? planned - official : null;
-              const over = diff !== null && diff > 0;
-              const under = diff !== null && diff < 0;
-              return (
-                <div key={emp.id} className="flex items-center gap-2 bg-card border rounded-lg px-4 py-2 text-sm">
-                  <span className="font-medium text-muted-foreground truncate max-w-[120px]">{emp.name}</span>
-                  <span className="font-bold">{planned.toFixed(1)} h</span>
-                  {official !== null && (
-                    <>
-                      <span className="text-muted-foreground">/ {official} h</span>
-                      <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${over ? 'bg-amber-100 text-amber-700' : under ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
-                        {diff !== null && diff >= 0 ? `+${diff.toFixed(1)}` : diff?.toFixed(1)} h
-                      </span>
-                    </>
-                  )}
-                </div>
-              );
-            })}
-            {employees.length > 1 && (
-              <div className="flex items-center gap-2 bg-muted/50 border rounded-lg px-4 py-2 text-sm">
-                <span className="font-medium text-muted-foreground">Total</span>
-                <span className="font-bold">{totalPlannedHours.toFixed(1)} h</span>
-                {officialHours !== null && (
-                  <span className="text-muted-foreground">
-                    / {employees.reduce((sum, emp) =>
-                      sum + Math.round(officialHours * ((emp.contractPercent ?? 100) / 100) * 10) / 10, 0
-                    ).toFixed(1)} h
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-        )}
 
         {planning?.violations && planning.violations.length > 0 && (
           <div className="bg-destructive/10 border border-destructive/20 text-destructive p-4 rounded-lg flex flex-col gap-2">
