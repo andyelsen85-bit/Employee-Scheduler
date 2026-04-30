@@ -158,7 +158,12 @@ function isHomeworkCode(code: string | null, shiftCodes: Record<string, ShiftCod
 function distributeJlDays(
   employees: EmployeeRecord[],
   workingDays: string[],
-  jlDays: number
+  jlDays: number,
+  /** Per-employee count of JL days already locked manually — reduces the pre-config count so
+   *  total JL (pre-config + manual) stays equal to jlDays. */
+  lockedJlCountByEmp: Record<number, number> = {},
+  /** Per-employee set of dates already locked as JL — excluded from the distribution pool. */
+  lockedJlDatesByEmp: Record<number, Set<string>> = {}
 ): Record<number, Set<string>> {
   const jlAssignments: Record<number, Set<string>> = {};
   const jlCountByDate: Record<string, number> = {};
@@ -166,7 +171,17 @@ function distributeJlDays(
 
   for (const emp of employees) {
     jlAssignments[emp.id] = new Set();
-    if (jlDays <= 0 || workingDays.length === 0) continue;
+
+    // Reduce the pre-config count by however many JL days the employee already has locked.
+    // This ensures the total JL (locked + auto-generated) equals jlDays, not jlDays + locked.
+    const alreadyLockedCount = lockedJlCountByEmp[emp.id] ?? 0;
+    const remainingCount = Math.max(0, jlDays - alreadyLockedCount);
+
+    if (remainingCount <= 0 || workingDays.length === 0) continue;
+
+    // Exclude dates already locked as JL so we don't double-assign the same day.
+    const lockedDates = lockedJlDatesByEmp[emp.id] ?? new Set<string>();
+    const availableDays = workingDays.filter((d) => !lockedDates.has(d));
 
     // Prefer placing pre-assigned JL on weekdays the employee already wants as JL.
     // This way the monthly JL "merges" into a preference-JL slot rather than adding
@@ -176,8 +191,8 @@ function distributeJlDays(
         .filter((p) => p.code === "JL")
         .map((p) => p.day)
     );
-    const preferredJlWorkingDays = workingDays.filter((d) => jlPrefWeekdays.has(getDayOfWeek0Mon(d)));
-    const otherWorkingDays = workingDays.filter((d) => !jlPrefWeekdays.has(getDayOfWeek0Mon(d)));
+    const preferredJlWorkingDays = availableDays.filter((d) => jlPrefWeekdays.has(getDayOfWeek0Mon(d)));
+    const otherWorkingDays = availableDays.filter((d) => !jlPrefWeekdays.has(getDayOfWeek0Mon(d)));
 
     // Within each tier, shuffle then stable-sort by load
     const shuffledPref = shuffle([...preferredJlWorkingDays]);
@@ -186,7 +201,7 @@ function distributeJlDays(
     shuffledOther.sort((a, b) => (jlCountByDate[a] ?? 0) - (jlCountByDate[b] ?? 0));
 
     const prioritized = [...shuffledPref, ...shuffledOther];
-    const count = Math.min(jlDays, workingDays.length);
+    const count = Math.min(remainingCount, availableDays.length);
     const picked = prioritized.slice(0, count);
     for (const d of picked) {
       jlAssignments[emp.id].add(d);
@@ -497,7 +512,25 @@ export function generatePlanning(params: {
 
   // JL day assignment (pre-configured from monthly config)
   // Use only this month's days — overflow days are never JL.
-  const jlAssignments = distributeJlDays(employees, thisMonthPlanningDays, jlDays);
+  // Pre-compute locked JL info so distributeJlDays can account for manually placed JL entries.
+  // This prevents the planner from generating EXTRA pre-config JL on top of manual ones.
+  const lockedJlCountByEmp: Record<number, number> = {};
+  const lockedJlDatesByEmp: Record<number, Set<string>> = {};
+  for (const e of lockedEntries) {
+    if (e.shiftCode === "JL" && thisMonthPlanningDaySet.has(e.date)) {
+      lockedJlCountByEmp[e.employeeId] = (lockedJlCountByEmp[e.employeeId] ?? 0) + 1;
+      if (!lockedJlDatesByEmp[e.employeeId]) lockedJlDatesByEmp[e.employeeId] = new Set();
+      lockedJlDatesByEmp[e.employeeId].add(e.date);
+    }
+  }
+
+  const jlAssignments = distributeJlDays(
+    employees,
+    thisMonthPlanningDays,
+    jlDays,
+    lockedJlCountByEmp,
+    lockedJlDatesByEmp
+  );
 
   // Per-employee contractual hours (scaled by contract %) with PRM counter compensation
   const empContractualHours: Record<number, number> = {};
