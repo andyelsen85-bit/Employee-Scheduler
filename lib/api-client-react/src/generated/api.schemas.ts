@@ -267,6 +267,8 @@ export interface PlanningEntry {
   isLocked: boolean;
   requestedOff: boolean;
   notes?: string | null;
+  /** True for entries fetched from the previous month's plan (overflow display only — excluded from this month's hour totals) */
+  isFromPrevMonth: boolean;
 }
 
 export interface PlanningViolation {

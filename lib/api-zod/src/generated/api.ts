@@ -812,6 +812,11 @@ export const GetMonthPlanningResponse = zod.object({
       isLocked: zod.boolean().describe("True when manually set or confirmed"),
       requestedOff: zod.boolean(),
       notes: zod.string().nullish(),
+      isFromPrevMonth: zod
+        .boolean()
+        .describe(
+          "True for entries fetched from the previous month's plan (overflow display only — excluded from this month's hour totals)",
+        ),
     }),
   ),
   violations: zod.array(
@@ -871,6 +876,11 @@ export const GeneratePlanningResponse = zod.object({
       isLocked: zod.boolean().describe("True when manually set or confirmed"),
       requestedOff: zod.boolean(),
       notes: zod.string().nullish(),
+      isFromPrevMonth: zod
+        .boolean()
+        .describe(
+          "True for entries fetched from the previous month's plan (overflow display only — excluded from this month's hour totals)",
+        ),
     }),
   ),
   violations: zod.array(
@@ -931,6 +941,11 @@ export const GenerateEmployeePlanningResponse = zod.object({
       isLocked: zod.boolean().describe("True when manually set or confirmed"),
       requestedOff: zod.boolean(),
       notes: zod.string().nullish(),
+      isFromPrevMonth: zod
+        .boolean()
+        .describe(
+          "True for entries fetched from the previous month's plan (overflow display only — excluded from this month's hour totals)",
+        ),
     }),
   ),
   violations: zod.array(
@@ -975,6 +990,11 @@ export const ConfirmPlanningResponse = zod.object({
       isLocked: zod.boolean().describe("True when manually set or confirmed"),
       requestedOff: zod.boolean(),
       notes: zod.string().nullish(),
+      isFromPrevMonth: zod
+        .boolean()
+        .describe(
+          "True for entries fetched from the previous month's plan (overflow display only — excluded from this month's hour totals)",
+        ),
     }),
   ),
   violations: zod.array(
@@ -1021,6 +1041,11 @@ export const CreatePlanningEntryResponse = zod.object({
   isLocked: zod.boolean().describe("True when manually set or confirmed"),
   requestedOff: zod.boolean(),
   notes: zod.string().nullish(),
+  isFromPrevMonth: zod
+    .boolean()
+    .describe(
+      "True for entries fetched from the previous month's plan (overflow display only — excluded from this month's hour totals)",
+    ),
 });
 
 /**
@@ -1053,6 +1078,11 @@ export const UpdatePlanningEntryResponse = zod.object({
   isLocked: zod.boolean().describe("True when manually set or confirmed"),
   requestedOff: zod.boolean(),
   notes: zod.string().nullish(),
+  isFromPrevMonth: zod
+    .boolean()
+    .describe(
+      "True for entries fetched from the previous month's plan (overflow display only — excluded from this month's hour totals)",
+    ),
 });
 
 /**

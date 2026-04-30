@@ -293,7 +293,12 @@ export default function Planning() {
   function getEmployeePlannedHours(empId: number): number {
     if (!planning) return 0;
     return planning.entries
-      .filter(e => e.employeeId === empId && e.shiftCode && e.date.startsWith(currentMonthPrefix))
+      .filter(e =>
+        e.employeeId === empId &&
+        e.shiftCode &&
+        e.date.startsWith(currentMonthPrefix) &&
+        !e.isFromPrevMonth          // exclude overflow entries shown from previous month
+      )
       .reduce((sum, e) => sum + (shiftHoursMap.get(e.shiftCode!) ?? 0), 0);
   }
 

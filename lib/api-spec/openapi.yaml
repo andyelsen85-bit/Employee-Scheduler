@@ -1345,7 +1345,10 @@ components:
         notes:
           type: string
           nullable: true
-      required: [id, employeeId, date, isPermanence, isLocked, requestedOff]
+        isFromPrevMonth:
+          type: boolean
+          description: "True for entries fetched from the previous month's plan (overflow display only — excluded from this month's hour totals)"
+      required: [id, employeeId, date, isPermanence, isLocked, requestedOff, isFromPrevMonth]
 
     MonthPlanning:
       type: object

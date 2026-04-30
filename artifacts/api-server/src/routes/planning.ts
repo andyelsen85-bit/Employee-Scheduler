@@ -195,6 +195,7 @@ async function buildMonthResponse(year: number, month: number) {
     }
   }
 
+  const overflowIds = new Set(overflowEntries.map((e) => e.id));
   const allEntries = [...overflowEntries, ...entries];
   const storedViolations = Array.isArray(pm.violations) ? (pm.violations as PlanningViolation[]) : [];
 
@@ -213,6 +214,7 @@ async function buildMonthResponse(year: number, month: number) {
       isLocked: e.isLocked,
       requestedOff: e.requestedOff,
       notes: e.notes,
+      isFromPrevMonth: overflowIds.has(e.id),
     })),
     violations: storedViolations,
     generatedAt: pm.generatedAt?.toISOString() ?? null,
