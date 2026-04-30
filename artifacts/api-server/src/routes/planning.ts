@@ -532,12 +532,7 @@ router.post("/planning/:year/:month/confirm", async (req, res): Promise<void> =>
     const plannedByEmployee: Record<number, number> = {};
     for (const entry of entries) {
       if (!entry.shiftCode) continue;
-      const baseHours = shiftHoursMap.get(entry.shiftCode) ?? 0;
-      // C0 (day-off) hours scale with the employee's contract percentage
-      const pct = empContractPct[entry.employeeId] ?? 100;
-      const hours = entry.shiftCode === "C0"
-        ? Math.round(baseHours * (pct / 100) * 10) / 10
-        : baseHours;
+      const hours = shiftHoursMap.get(entry.shiftCode) ?? 0;
       plannedByEmployee[entry.employeeId] = (plannedByEmployee[entry.employeeId] ?? 0) + hours;
     }
 
