@@ -19,8 +19,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useState, KeyboardEvent } from "react";
-import { Plus, Pencil, Trash2, Building2, Users, KeyRound, X, ArrowUpDown } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { useState, useEffect, KeyboardEvent } from "react";
+import { Plus, Pencil, Trash2, Building2, Users, KeyRound, X, ArrowUpDown, UserCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 type OfficeForm = { name: string; deskCount: number; deskCodes: string[]; heightAdjustableDesks: string[] };
@@ -32,6 +34,33 @@ export default function OfficesConfig() {
   const [form, setForm] = useState<OfficeForm>({ name: "", deskCount: 10, deskCodes: [], heightAdjustableDesks: [] });
   const [selectedEmployees, setSelectedEmployees] = useState<Set<number>>(new Set());
   const [newDeskCode, setNewDeskCode] = useState("");
+  const [rotationOfficeId, setRotationOfficeId] = useState<string>("none");
+  const [rotationSaving, setRotationSaving] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((s: Record<string, string | null>) => {
+        setRotationOfficeId(s.spoc_rotation_office_id ?? "none");
+      })
+      .catch(() => {});
+  }, []);
+
+  const saveRotationOffice = async () => {
+    setRotationSaving(true);
+    try {
+      await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ spoc_rotation_office_id: rotationOfficeId === "none" ? null : rotationOfficeId }),
+      });
+      toast({ title: "SPOC rotation office saved" });
+    } catch {
+      toast({ title: "Failed to save", variant: "destructive" });
+    } finally {
+      setRotationSaving(false);
+    }
+  };
 
   const { data: offices, isLoading } = useListOffices({
     query: { queryKey: getListOfficesQueryKey() },
@@ -132,6 +161,40 @@ export default function OfficesConfig() {
             Add Office
           </Button>
         </div>
+
+        {/* SPOC Rotation Office setting */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <UserCheck className="h-4 w-4" />
+              SPOC Rotation Office
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <p className="text-sm text-muted-foreground">
+              The office where one SPOC employee is sent each week on rotation.
+              The auto-planner will direct that SPOC's onsite days to this office for their assigned week.
+            </p>
+            <div className="flex items-center gap-3">
+              <Select value={rotationOfficeId} onValueChange={setRotationOfficeId}>
+                <SelectTrigger className="w-64">
+                  <SelectValue placeholder="None configured" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None (disabled)</SelectItem>
+                  {offices?.map((o) => (
+                    <SelectItem key={o.id} value={String(o.id)}>{o.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button onClick={saveRotationOffice} disabled={rotationSaving} size="sm">
+                Save
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Separator />
 
         {isLoading ? (
           <div className="grid gap-4 md:grid-cols-2">

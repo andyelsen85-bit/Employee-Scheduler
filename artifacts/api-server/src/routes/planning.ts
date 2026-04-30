@@ -12,6 +12,8 @@ import {
   planningMonthsTable,
   planningEntriesTable,
   permanenceOverridesTable,
+  spocRotationOverridesTable,
+  appSettingsTable,
 } from "@workspace/db";
 import {
   GetMonthPlanningParams,
@@ -40,6 +42,51 @@ function getISOWeekStart(year: number, week: number): string {
   const dayOfWeek = (jan4.getDay() + 6) % 7;
   const ws = new Date(jan4.getTime() - dayOfWeek * 86400000 + (week - 1) * 7 * 86400000);
   return ws.toISOString().split("T")[0];
+}
+
+async function buildSpocRotationAssignments(
+  year: number,
+  month: number
+): Promise<{ assignments: Record<string, number | null>; officeId: number | null }> {
+  const spocs = await db
+    .select({ id: employeesTable.id })
+    .from(employeesTable)
+    .where(eq(employeesTable.isSpoc, true));
+
+  const overrides = await db
+    .select()
+    .from(spocRotationOverridesTable)
+    .where(eq(spocRotationOverridesTable.year, year));
+
+  const settingRows = await db.select().from(appSettingsTable);
+  const rotationOfficeIdStr = settingRows.find((r) => r.key === "spoc_rotation_office_id")?.value ?? null;
+  const officeId = rotationOfficeIdStr ? parseInt(rotationOfficeIdStr, 10) : null;
+
+  const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
+  const monthEndDate = new Date(year, month, 0);
+  const monthEnd = monthEndDate.toISOString().split("T")[0];
+
+  const totalWeeks = getISOWeeksInYear(year);
+  const assignments: Record<string, number | null> = {};
+
+  for (let w = 1; w <= totalWeeks; w++) {
+    const ws = getISOWeekStart(year, w);
+    const weDate = new Date(ws);
+    weDate.setDate(weDate.getDate() + 6);
+    const we = weDate.toISOString().split("T")[0];
+    if (we < monthStart || ws > monthEnd) continue;
+
+    const override = overrides.find((o) => o.weekNumber === w);
+    if (override) {
+      assignments[ws] = override.employeeId;
+    } else if (spocs.length > 0) {
+      assignments[ws] = spocs[(w - 1) % spocs.length].id;
+    } else {
+      assignments[ws] = null;
+    }
+  }
+
+  return { assignments, officeId };
 }
 
 async function buildPermanenceAssignments(
@@ -216,7 +263,10 @@ router.post("/planning/:year/:month/generate", async (req, res): Promise<void> =
 
   // Build permanence assignments using ISO week numbers + manual overrides,
   // matching exactly what the Permanence page shows.
-  const precomputedPermanence = await buildPermanenceAssignments(year, month);
+  const [precomputedPermanence, spocRotation] = await Promise.all([
+    buildPermanenceAssignments(year, month),
+    buildSpocRotationAssignments(year, month),
+  ]);
 
   const { entries, violations } = generatePlanning({
     year,
@@ -239,6 +289,7 @@ router.post("/planning/:year/:month/generate", async (req, res): Promise<void> =
       dayCodePreferences: Array.isArray(e.dayCodePreferences) ? (e.dayCodePreferences as import("../lib/planner.js").DayCodePreference[]) : [],
       prefersHeightAdjustableDesk: e.prefersHeightAdjustableDesk ?? false,
       preferredOfficeId: e.preferredOfficeId ?? null,
+      onsiteWeekRatio: e.onsiteWeekRatio ?? null,
     })),
     offices: officesWithEmps,
     shiftCodes,
@@ -256,6 +307,8 @@ router.post("/planning/:year/:month/generate", async (req, res): Promise<void> =
     })),
     lockedEntries,
     permanenceAssignments: precomputedPermanence,
+    spocRotationAssignments: spocRotation.assignments,
+    spocRotationOfficeId: spocRotation.officeId,
   });
 
   // Delete all non-locked entries, then insert newly generated ones

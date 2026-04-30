@@ -308,6 +308,15 @@ export function generatePlanning(params: {
    * This ensures the planner is consistent with the Permanence page (ISO week numbers + manual overrides).
    */
   permanenceAssignments?: Record<string, { g1: number | null; g2: number | null }>;
+  /**
+   * SPOC rotation assignments keyed by ISO week-start date.
+   * Maps weekStart → employeeId of the SPOC assigned to the rotation office that week.
+   */
+  spocRotationAssignments?: Record<string, number | null>;
+  /**
+   * The office ID that SPOC rotation employees should be sent to during their rotation week.
+   */
+  spocRotationOfficeId?: number | null;
 }): { entries: PlanningEntryInput[]; violations: PlanningViolation[] } {
   const {
     year,
@@ -321,6 +330,8 @@ export function generatePlanning(params: {
     requestedDaysOff,
     lockedEntries = [],
     permanenceAssignments: externalPermanenceAssignments,
+    spocRotationAssignments = {},
+    spocRotationOfficeId,
   } = params;
 
   // Build a set of locked slots: "employeeId-date" — these are skipped during generation
@@ -404,6 +415,21 @@ export function generatePlanning(params: {
         weeklyPreferredOffice[emp.id][wk] = empOfficeList[preferredIdx].id;
       });
     });
+  }
+
+  // ── SPOC rotation: override preferred office for the designated SPOC each week ──
+  // When a SPOC is assigned to the rotation office for a given week AND the planner
+  // assigns them an onsite day, their desk is reserved at the rotation office instead
+  // of their normal office. Homework/cowork weeks are not changed.
+  if (spocRotationOfficeId) {
+    for (const [wk, empId] of Object.entries(spocRotationAssignments)) {
+      if (empId == null) continue;
+      if (!weeklyPreferredOffice[empId]) weeklyPreferredOffice[empId] = {};
+      // Only set if this week is in scope for this month
+      if (weekStarts.includes(wk)) {
+        weeklyPreferredOffice[empId][wk] = spocRotationOfficeId;
+      }
+    }
   }
 
   // JL day assignment (pre-configured from monthly config)

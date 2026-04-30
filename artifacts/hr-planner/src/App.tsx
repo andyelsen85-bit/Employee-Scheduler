@@ -18,6 +18,7 @@ import HolidaysConfig from "@/pages/config-holidays";
 import MonthlyConfig from "@/pages/config-monthly";
 import Permanence from "@/pages/permanence";
 import BackupRestore from "@/pages/config-backup";
+import SpocRotation from "@/pages/spoc-rotation";
 
 const queryClient = new QueryClient();
 
@@ -41,6 +42,7 @@ function Router() {
       <Route path="/config/monthly" component={MonthlyConfig} />
       <Route path="/permanence/:year" component={Permanence} />
       <Route path="/config/backup" component={BackupRestore} />
+      <Route path="/spoc-rotation/:year" component={SpocRotation} />
       <Route component={NotFound} />
     </Switch>
   );

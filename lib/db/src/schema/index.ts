@@ -7,3 +7,4 @@ export * from "./monthlyConfigs";
 export * from "./publicHolidays";
 export * from "./planning";
 export * from "./permanence";
+export * from "./spocRotation";

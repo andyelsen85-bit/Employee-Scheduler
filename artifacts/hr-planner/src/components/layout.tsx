@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Users, Calendar, Home, Building2, Clock, CalendarDays, CalendarRange, Shield, LogOut, Layers, DatabaseBackup } from "lucide-react";
+import { Users, Calendar, Home, Building2, Clock, CalendarDays, CalendarRange, Shield, LogOut, Layers, DatabaseBackup, UserCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { logout } from "@/hooks/use-auth";
 
@@ -8,6 +8,7 @@ const navigation = [
   { name: "Dashboard", href: "/", icon: Home },
   { name: "Planning", href: "/planning", icon: Calendar },
   { name: "Permanence", href: `/permanence/${new Date().getFullYear()}`, icon: Shield },
+  { name: "SPOC Rotation", href: `/spoc-rotation/${new Date().getFullYear()}`, icon: UserCheck },
   { name: "Employees", href: "/employees", icon: Users },
   { name: "Offices", href: "/config/offices", icon: Building2 },
   { name: "Departments", href: "/config/departments", icon: Layers },
