@@ -575,6 +575,7 @@ export function generatePlanning(params: {
         empDayTypeMap[emp.id][day] = type;
       }
     }
+
   }
 
   // ── PHASE 2: Day-by-day assignment ────────────────────────────────────────
@@ -991,6 +992,12 @@ export function generatePlanning(params: {
       const currentType = shiftCodes[entry.shiftCode]?.type;
       // Only promote homework → onsite. Cowork is intentional (external coworking site).
       if (currentType !== "homework") continue;
+
+      // Never promote a day that was pre-planned as a homework week in Phase 1.
+      // Phase 1 deliberately assigned this week as homework to hit the 50% onsite ratio.
+      // Promoting it would bypass that ratio, especially when the employee has a second
+      // office (e.g. a co-work space) that always has free desks.
+      if (empDayTypeMap[emp.id]?.[entry.date] === "homework") continue;
 
       // Respect explicit homework day preferences — don't override the employee's intent.
       const dow = getDayOfWeek0Mon(entry.date);
