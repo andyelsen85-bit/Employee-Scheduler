@@ -571,14 +571,28 @@ export function generatePlanning(params: {
         .map((p) => p.day)
     );
 
-    let neededJL = 0;
+    // ── JL count calculation ─────────────────────────────────────────────────
+    // Two independent constraints; we take the maximum (most JL days) of both:
+    //
+    // 1. Contract-proportional: an N% employee should work N% of available shift
+    //    days — the rest become JL. This is the primary driver for part-time
+    //    employees where full-week hours might be < monthly target.
+    //    e.g. Marc 80%, 13 candidate days → ceil(13 × 0.2) = 3 JL days.
+    //
+    // 2. Hours-based: when working every candidate day would overshoot the target,
+    //    convert enough shift days to JL to stay within the budget.
+    //    e.g. Dirk V 100%, 9h codes, 22 days, 176h target →
+    //         ceil(22 − 176/9) = ceil(2.44) = 3 JL days.
+    const contractRatio = (emp.contractPercent ?? 100) / 100;
+    const proportionalJL = Math.ceil(candidateShiftDays.length * (1 - contractRatio));
+
+    let hoursJL = 0;
     if (weightedAvgHours > 0 && totalExpectedIfAllShift > empTarget) {
-      // Use ceil(days - target/avgHours) instead of days - ceil(target/avgHours).
-      // This guarantees we never overshoot the target: e.g. 22 days, 9h codes, 176h
-      // target → ceil(22 - 19.56) = ceil(2.44) = 3 JL days → 19 × 9h = 171h (5h under)
-      // rather than 2 JL days → 20 × 9h = 180h (4h over).
-      neededJL = Math.ceil(candidateShiftDays.length - empTarget / weightedAvgHours);
+      hoursJL = Math.ceil(candidateShiftDays.length - empTarget / weightedAvgHours);
     }
+
+    let neededJL = Math.max(proportionalJL, hoursJL);
+
     // Reduce by JL days already planned in the previous month's overflow entries
     // (the initial partial-week days of this month that were planned last month).
     neededJL = Math.max(0, neededJL - (prevMonthOverflowJlCountByEmployee[emp.id] ?? 0));
