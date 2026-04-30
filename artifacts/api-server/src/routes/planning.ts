@@ -195,8 +195,18 @@ async function buildMonthResponse(year: number, month: number) {
     }
   }
 
-  const overflowIds = new Set(overflowEntries.map((e) => e.id));
-  const allEntries = [...overflowEntries, ...entries];
+  // Deduplicate: if this month's plan already has an entry for an (employeeId, date) pair
+  // that also appears in the overflow (prev month's plan), the current month's entry wins.
+  // This happens when the user manually locks a code for a partial-week overflow day —
+  // both the prev month's auto-generated overflow and the new locked entry would be present
+  // without deduplication, causing double-counting in the hours total and duplicate cells.
+  const currentMonthSlots = new Set(entries.map((e) => `${e.employeeId}-${e.date}`));
+  const filteredOverflow = overflowEntries.filter(
+    (e) => !currentMonthSlots.has(`${e.employeeId}-${e.date}`)
+  );
+
+  const overflowIds = new Set(filteredOverflow.map((e) => e.id));
+  const allEntries = [...filteredOverflow, ...entries];
   const storedViolations = Array.isArray(pm.violations) ? (pm.violations as PlanningViolation[]) : [];
 
   return {
@@ -331,9 +341,17 @@ router.post("/planning/:year/:month/generate", async (req, res): Promise<void> =
             inArray(planningEntriesTable.date, partialDays)
           )
         );
+      // Skip dates where the current month's plan already has its own entry for that
+      // employee — those overflow entries will be hidden by deduplication in buildMonthResponse,
+      // so their hours must NOT be subtracted from the effective target a second time
+      // (lockedCurrentShiftHours in the planner already handles the current-month side).
+      const currentMonthSlotsFull = new Set(
+        existingEntries.map((e) => `${e.employeeId}-${e.date}`)
+      );
       const jlCounts: Record<number, number> = {};
       const shiftHours: Record<number, number> = {};
       for (const e of prevEntries) {
+        if (currentMonthSlotsFull.has(`${e.employeeId}-${e.date}`)) continue;
         if (e.shiftCode === "JL") {
           jlCounts[e.employeeId] = (jlCounts[e.employeeId] ?? 0) + 1;
         } else if (e.shiftCode && e.shiftCode !== "C0") {
@@ -528,9 +546,13 @@ router.post("/planning/:year/:month/generate/employee/:employeeId", async (req, 
             inArray(planningEntriesTable.date, partialDays)
           )
         );
+      const currentMonthSlotsSingle = new Set(
+        existingEntries.map((e) => `${e.employeeId}-${e.date}`)
+      );
       const jlCounts: Record<number, number> = {};
       const shiftHours: Record<number, number> = {};
       for (const e of prevEntries) {
+        if (currentMonthSlotsSingle.has(`${e.employeeId}-${e.date}`)) continue;
         if (e.shiftCode === "JL") {
           jlCounts[e.employeeId] = (jlCounts[e.employeeId] ?? 0) + 1;
         } else if (e.shiftCode && e.shiftCode !== "C0") {
