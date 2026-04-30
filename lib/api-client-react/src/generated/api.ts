@@ -1513,7 +1513,7 @@ export const useCreateShiftCode = <
 };
 
 export const getUpdateShiftCodeUrl = (code: string) => {
-  return `/api/shift-codes/${code}`;
+  return `/api/shift-codes/${encodeURIComponent(code)}`;
 };
 
 export const updateShiftCode = async (
@@ -1594,7 +1594,7 @@ export const useUpdateShiftCode = <
 };
 
 export const getDeleteShiftCodeUrl = (code: string) => {
-  return `/api/shift-codes/${code}`;
+  return `/api/shift-codes/${encodeURIComponent(code)}`;
 };
 
 export const deleteShiftCode = async (
