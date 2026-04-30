@@ -285,10 +285,15 @@ export default function Planning() {
 
   const officialHours = monthlyConfig?.contractualHours ?? null;
 
+  // Only count hours for entries within the current month — overflow entries
+  // (from the previous month's plan shown for partial-week days) and entries
+  // belonging to the next month (overflow days planned ahead) are excluded.
+  const currentMonthPrefix = `${year}-${String(month).padStart(2, "0")}-`;
+
   function getEmployeePlannedHours(empId: number): number {
     if (!planning) return 0;
     return planning.entries
-      .filter(e => e.employeeId === empId && e.shiftCode)
+      .filter(e => e.employeeId === empId && e.shiftCode && e.date.startsWith(currentMonthPrefix))
       .reduce((sum, e) => sum + (shiftHoursMap.get(e.shiftCode!) ?? 0), 0);
   }
 
@@ -296,7 +301,7 @@ export default function Planning() {
     ? employees.reduce((sum, emp) => sum + getEmployeePlannedHours(emp.id), 0)
     : 0;
 
-  const lockedCount = planning ? planning.entries.filter(e => e.isLocked).length : 0;
+  const lockedCount = planning ? planning.entries.filter(e => e.isLocked && e.date.startsWith(currentMonthPrefix)).length : 0;
 
   return (
     <Layout>
