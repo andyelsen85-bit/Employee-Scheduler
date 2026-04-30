@@ -96,6 +96,7 @@ router.put("/employees/:id", async (req, res): Promise<void> => {
   if (data.prefersHeightAdjustableDesk !== undefined) updateData.prefersHeightAdjustableDesk = data.prefersHeightAdjustableDesk ?? undefined;
   if (data.departmentId !== undefined) updateData.departmentId = data.departmentId ?? null;
   if (data.preferredOfficeId !== undefined) updateData.preferredOfficeId = data.preferredOfficeId ?? null;
+  if (data.onsiteWeekRatio !== undefined) updateData.onsiteWeekRatio = data.onsiteWeekRatio ?? null;
   if (data.notes !== undefined) updateData.notes = data.notes ?? null;
 
   const [row] = await db

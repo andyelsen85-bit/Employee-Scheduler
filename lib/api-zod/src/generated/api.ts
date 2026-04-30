@@ -116,6 +116,12 @@ export const ListEmployeesResponseItem = zod.object({
     .describe(
       "ID of the office this employee prefers to work from (used by the auto-planner)",
     ),
+  onsiteWeekRatio: zod
+    .number()
+    .nullish()
+    .describe(
+      "Custom onsite week ratio for the auto-planner (e.g. 0.5 = 50%). Null uses the default formula (floor(weeks\/2)).",
+    ),
   notes: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -146,6 +152,12 @@ export const CreateEmployeeBody = zod.object({
     .number()
     .nullish()
     .describe("Preferred office for onsite planning"),
+  onsiteWeekRatio: zod
+    .number()
+    .nullish()
+    .describe(
+      "Custom onsite week ratio (0.0–1.0). Null = use default formula.",
+    ),
   notes: zod.string().nullish(),
 });
 
@@ -205,6 +217,12 @@ export const GetEmployeeResponse = zod.object({
     .describe(
       "ID of the office this employee prefers to work from (used by the auto-planner)",
     ),
+  onsiteWeekRatio: zod
+    .number()
+    .nullish()
+    .describe(
+      "Custom onsite week ratio for the auto-planner (e.g. 0.5 = 50%). Null uses the default formula (floor(weeks\/2)).",
+    ),
   notes: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -240,6 +258,12 @@ export const UpdateEmployeeBody = zod.object({
     .number()
     .nullish()
     .describe("Preferred office for onsite planning"),
+  onsiteWeekRatio: zod
+    .number()
+    .nullish()
+    .describe(
+      "Custom onsite week ratio (0.0–1.0). Null = use default formula.",
+    ),
   notes: zod.string().nullish(),
 });
 
@@ -294,6 +318,12 @@ export const UpdateEmployeeResponse = zod.object({
     .nullish()
     .describe(
       "ID of the office this employee prefers to work from (used by the auto-planner)",
+    ),
+  onsiteWeekRatio: zod
+    .number()
+    .nullish()
+    .describe(
+      "Custom onsite week ratio for the auto-planner (e.g. 0.5 = 50%). Null uses the default formula (floor(weeks\/2)).",
     ),
   notes: zod.string().nullish(),
   createdAt: zod.coerce.date(),
@@ -369,6 +399,12 @@ export const UpdateEmployeeCountersResponse = zod.object({
     .nullish()
     .describe(
       "ID of the office this employee prefers to work from (used by the auto-planner)",
+    ),
+  onsiteWeekRatio: zod
+    .number()
+    .nullish()
+    .describe(
+      "Custom onsite week ratio for the auto-planner (e.g. 0.5 = 50%). Null uses the default formula (floor(weeks\/2)).",
     ),
   notes: zod.string().nullish(),
   createdAt: zod.coerce.date(),

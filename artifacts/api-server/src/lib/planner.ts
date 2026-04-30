@@ -239,28 +239,28 @@ function pickJlSubstitutionDates(
 /**
  * Assign one location-type per ISO week so employees stay in the same place all week.
  *
- * Target distribution (when remote options exist):
- *   ~60 % onsite (ONSITE_PLAN_RATIO) / ~40 % homework+cowork.
- * The 50 % hard minimum (MIN_ONSITE_RATIO) is only used for violation checks, not here.
+ * Default distribution (when remote options exist, no custom ratio):
+ *   4 weeks → 2 onsite  5 weeks → 2  6 weeks → 3  7 weeks → 3
+ *   Formula: floor(n * 0.5)
  *
- * For employees who cannot work remotely at all, every week is onsite regardless.
+ * When `onsiteWeekRatio` is set on an employee (0.0–1.0), that ratio is used instead.
+ * Employees who cannot work remotely at all are always fully onsite regardless.
  */
 function predetermineWeeklyTypes(
   weekKeys: string[],
   canHomework: boolean,
-  canCowork: boolean
+  canCowork: boolean,
+  onsiteWeekRatio?: number | null
 ): Record<string, "onsite" | "homework" | "cowork"> {
   if (weekKeys.length === 0) return {};
 
   const numWeeks = weekKeys.length;
-
-  // Desired week-type distribution (floor gives exact integer split):
-  //   4 weeks → 2 onsite   5 weeks → 2 onsite
-  //   6 weeks → 3 onsite   7 weeks → 3 onsite
-  // Formula: floor(n / 2)  i.e. floor(n * 0.5)
   const hasRemote = canHomework || canCowork;
+
+  // Use the employee's custom ratio when provided; otherwise the standard 50% floor formula.
+  const ratio = (onsiteWeekRatio != null) ? onsiteWeekRatio : 0.5;
   const targetOnsiteWeeks = hasRemote
-    ? Math.floor(numWeeks * 0.5)
+    ? Math.floor(numWeeks * ratio)
     : numWeeks;
   // Remaining weeks go to homework and/or cowork (40% target for eligible employees)
   const remaining = numWeeks - targetOnsiteWeeks;
@@ -521,7 +521,12 @@ export function generatePlanning(params: {
       if (!shiftDaysByWeek[wk]) shiftDaysByWeek[wk] = [];
       shiftDaysByWeek[wk].push(day);
     }
-    const weekTypeMap = predetermineWeeklyTypes(Object.keys(shiftDaysByWeek), canHomework, canCowork);
+    const weekTypeMap = predetermineWeeklyTypes(
+      Object.keys(shiftDaysByWeek),
+      canHomework,
+      canCowork,
+      (emp as { onsiteWeekRatio?: number | null }).onsiteWeekRatio
+    );
 
     // Force "onsite" for any week where this employee is the designated permanence person.
     // This ensures the planner never generates a cowork/homework week that violates permanence duty.

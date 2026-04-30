@@ -67,6 +67,8 @@ export interface Employee {
   departmentId?: number | null;
   /** ID of the office this employee prefers to work from (used by the auto-planner) */
   preferredOfficeId?: number | null;
+  /** Custom onsite week ratio for the auto-planner (e.g. 0.5 = 50%). Null uses the default formula (floor(weeks/2)). */
+  onsiteWeekRatio?: number | null;
   notes?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -91,6 +93,8 @@ export interface CreateEmployeeBody {
   departmentId?: number | null;
   /** Preferred office for onsite planning */
   preferredOfficeId?: number | null;
+  /** Custom onsite week ratio (0.0–1.0). Null = use default formula. */
+  onsiteWeekRatio?: number | null;
   notes?: string | null;
 }
 
@@ -117,6 +121,8 @@ export interface UpdateEmployeeBody {
   departmentId?: number | null;
   /** Preferred office for onsite planning */
   preferredOfficeId?: number | null;
+  /** Custom onsite week ratio (0.0–1.0). Null = use default formula. */
+  onsiteWeekRatio?: number | null;
   notes?: string | null;
 }
 

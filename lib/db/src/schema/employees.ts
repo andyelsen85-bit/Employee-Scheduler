@@ -43,6 +43,7 @@ export const employeesTable = pgTable("employees", {
     .default(false),
   departmentId: integer("department_id").references(() => departmentsTable.id, { onDelete: "set null" }),
   preferredOfficeId: integer("preferred_office_id"),
+  onsiteWeekRatio: real("onsite_week_ratio"),
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

@@ -86,6 +86,7 @@ export default function EmployeeDetail() {
         isManagement: employee.isManagement,
         departmentId: (employee as Record<string, unknown>).departmentId ?? null,
         preferredOfficeId: (employee as Record<string, unknown>).preferredOfficeId ?? null,
+        onsiteWeekRatio: (employee as Record<string, unknown>).onsiteWeekRatio ?? null,
         notes: employee.notes ?? "",
       });
       setCounters({
@@ -324,6 +325,30 @@ export default function EmployeeDetail() {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">The auto-planner will prioritise placing this employee in this office and will try to assign them onsite whenever a desk is free there.</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Onsite Week Ratio</Label>
+                <Select
+                  value={form.onsiteWeekRatio != null ? String(form.onsiteWeekRatio) : "default"}
+                  onValueChange={(v) => setForm({ ...form, onsiteWeekRatio: v === "default" ? null : Number(v) })}
+                >
+                  <SelectTrigger><SelectValue placeholder="Default (floor n/2)" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">Default (floor n/2) — 4w:2, 5w:2, 6w:3, 7w:3</SelectItem>
+                    <SelectItem value="0.25">25% — 4w:1, 5w:1, 6w:1, 7w:1</SelectItem>
+                    <SelectItem value="0.33">33% — 4w:1, 5w:1, 6w:2, 7w:2</SelectItem>
+                    <SelectItem value="0.4">40% — 4w:1, 5w:2, 6w:2, 7w:2</SelectItem>
+                    <SelectItem value="0.5">50% — 4w:2, 5w:2, 6w:3, 7w:3</SelectItem>
+                    <SelectItem value="0.6">60% — 4w:2, 5w:3, 6w:3, 7w:4</SelectItem>
+                    <SelectItem value="0.67">67% — 4w:2, 5w:3, 6w:4, 7w:4</SelectItem>
+                    <SelectItem value="0.75">75% — 4w:3, 5w:3, 6w:4, 7w:5</SelectItem>
+                    <SelectItem value="1">100% — always onsite</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Overrides the default onsite week distribution used by the auto-planner for this employee only.
+                  Only applies when the employee is homework or cowork eligible.
+                </p>
               </div>
               <Separator />
               <div className="space-y-3">

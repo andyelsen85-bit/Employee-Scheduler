@@ -868,6 +868,10 @@ components:
           type: integer
           nullable: true
           description: "ID of the office this employee prefers to work from (used by the auto-planner)"
+        onsiteWeekRatio:
+          type: number
+          nullable: true
+          description: "Custom onsite week ratio for the auto-planner (e.g. 0.5 = 50%). Null uses the default formula (floor(weeks/2))."
         notes:
           type: string
           nullable: true
@@ -939,6 +943,10 @@ components:
           type: integer
           nullable: true
           description: "Preferred office for onsite planning"
+        onsiteWeekRatio:
+          type: number
+          nullable: true
+          description: "Custom onsite week ratio (0.0–1.0). Null = use default formula."
         notes:
           type: string
           nullable: true
@@ -1004,6 +1012,10 @@ components:
           type: integer
           nullable: true
           description: "Preferred office for onsite planning"
+        onsiteWeekRatio:
+          type: number
+          nullable: true
+          description: "Custom onsite week ratio (0.0–1.0). Null = use default formula."
         notes:
           type: string
           nullable: true
