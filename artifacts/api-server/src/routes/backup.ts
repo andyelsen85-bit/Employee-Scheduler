@@ -140,8 +140,22 @@ router.post("/backup/restore", async (req, res): Promise<void> => {
     await insertRows("departments", depts, ["id", "name", "order"], true);
 
     const offs = tables.offices as Record<string, unknown>[];
-    await insertRows("offices", offs,
-      ["id", "name", "desk_count", "desk_codes", "height_adjustable_desks", "created_at"], true);
+    if (offs.length > 0) {
+      for (const row of offs) {
+        await client.query(
+          `INSERT INTO "offices" ("id","name","desk_count","desk_codes","height_adjustable_desks","created_at")
+           OVERRIDING SYSTEM VALUE VALUES ($1,$2,$3,$4,$5,$6)`,
+          [
+            row.id,
+            row.name,
+            row.deskCount ?? row.desk_count ?? 0,
+            JSON.stringify(row.deskCodes ?? row.desk_codes ?? []),
+            row.heightAdjustableDesks ?? row.height_adjustable_desks ?? 0,
+            row.createdAt ?? row.created_at ?? new Date().toISOString(),
+          ]
+        );
+      }
+    }
 
     const sc = tables.shiftCodes as Record<string, unknown>[];
     // shift_codes PK is text (code), no serial
