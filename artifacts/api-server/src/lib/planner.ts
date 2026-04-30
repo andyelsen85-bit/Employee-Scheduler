@@ -1295,9 +1295,11 @@ export function generatePlanning(params: {
     const target = empBaseContractualHours[emp.id] ?? contractualHours;
 
     // Mirror exactly what the frontend's getEmployeePlannedHours does:
-    // count all non-JL entries whose date starts with this month's prefix.
+    // count ALL entries (generated + locked) whose date starts with this month's prefix.
+    // Previously only `entries` (generated) was scanned, so locked C0/shift entries were
+    // invisible here — Phase 4 never saw the overshoot they caused and couldn't correct it.
     let plannedThisMonth = 0;
-    for (const e of entries) {
+    for (const e of [...entries, ...lockedEntries]) {
       if (e.employeeId !== emp.id || !e.date.startsWith(monthPrefix)) continue;
       plannedThisMonth += hoursForCode(e.shiftCode, shiftCodes);
     }
