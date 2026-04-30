@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq, and, ne, isNotNull, sql } from "drizzle-orm";
+import { eq, and, ne, isNotNull, sql, inArray } from "drizzle-orm";
 import {
   db,
   employeesTable,
@@ -160,13 +160,49 @@ async function buildMonthResponse(year: number, month: number) {
     .where(eq(planningEntriesTable.planningMonthId, pm.id))
     .orderBy(planningEntriesTable.date, planningEntriesTable.employeeId);
 
+  // Also fetch entries for the initial partial-week days: days in this month whose ISO week
+  // started in the previous month. These were generated and stored as part of the previous
+  // month's planning run (overflow days) and must be shown here too.
+  const firstDayOfMonth = new Date(`${year}-${String(month).padStart(2, "0")}-01T12:00:00Z`);
+  const w = firstDayOfMonth.getUTCDay(); // 0=Sun, 1=Mon, …, 6=Sat
+  // Number of days at the start of this month that complete a week started in the previous month
+  const numPartialDays = w === 1 ? 0 : w === 0 ? 1 : 8 - w;
+  let overflowEntries: typeof entries = [];
+  if (numPartialDays > 0) {
+    const partialWeekDays: string[] = [];
+    for (let i = 0; i < numPartialDays; i++) {
+      partialWeekDays.push(
+        `${year}-${String(month).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}`
+      );
+    }
+    const prevYear = month === 1 ? year - 1 : year;
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const prevPmRows = await db
+      .select()
+      .from(planningMonthsTable)
+      .where(and(eq(planningMonthsTable.year, prevYear), eq(planningMonthsTable.month, prevMonth)));
+    if (prevPmRows.length > 0) {
+      overflowEntries = await db
+        .select()
+        .from(planningEntriesTable)
+        .where(
+          and(
+            eq(planningEntriesTable.planningMonthId, prevPmRows[0].id),
+            inArray(planningEntriesTable.date, partialWeekDays)
+          )
+        )
+        .orderBy(planningEntriesTable.date, planningEntriesTable.employeeId);
+    }
+  }
+
+  const allEntries = [...overflowEntries, ...entries];
   const storedViolations = Array.isArray(pm.violations) ? (pm.violations as PlanningViolation[]) : [];
 
   return {
     year,
     month,
     status: pm.status,
-    entries: entries.map((e) => ({
+    entries: allEntries.map((e) => ({
       id: e.id,
       employeeId: e.employeeId,
       date: e.date,

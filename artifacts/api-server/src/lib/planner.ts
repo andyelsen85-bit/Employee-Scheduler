@@ -1,4 +1,4 @@
-import { addDays, format, getDay, startOfMonth, endOfMonth, eachDayOfInterval, parseISO } from "date-fns";
+import { addDays, format, getDay, startOfMonth, endOfMonth, eachDayOfInterval, parseISO, isAfter } from "date-fns";
 
 export type ShiftCodeRecord = {
   code: string;
@@ -346,13 +346,41 @@ export function generatePlanning(params: {
   // falls within this month. Days at the start of the month that complete a week started
   // in the previous month are left blank (no auto-planning entry generated for them).
   const monthStartStr = format(startOfMonth(new Date(year, month - 1)), "yyyy-MM-dd");
-  const fullWeekWorkingDays = workingDays.filter((d) => getWeekNumber(d) >= monthStartStr);
+
+  // Overflow: days in the NEXT month that complete the last week of this month.
+  // E.g. if this month ends on Thursday, the Friday of that same week (in the next month)
+  // is an overflow day — planned now so it's visible when viewing the next month.
+  const monthEndDate = endOfMonth(new Date(year, month - 1));
+  const monthEndStr = format(monthEndDate, "yyyy-MM-dd");
+  const lastWeekFriday = addDays(parseISO(getWeekNumber(monthEndStr)), 4); // Mon of last week + 4 = Fri
+  const overflowCalendarDays: string[] = [];
+  const overflowWorkingDays: string[] = [];
+  if (isAfter(lastWeekFriday, monthEndDate)) {
+    let d = addDays(monthEndDate, 1);
+    while (!isAfter(d, lastWeekFriday)) {
+      const dayStr = format(d, "yyyy-MM-dd");
+      overflowCalendarDays.push(dayStr);
+      const dow = getDay(d);
+      if (dow !== 0 && dow !== 6 && !publicHolidayDates.includes(dayStr)) {
+        overflowWorkingDays.push(dayStr);
+      }
+      d = addDays(d, 1);
+    }
+  }
+
+  const fullWeekWorkingDays = [
+    ...workingDays.filter((d) => getWeekNumber(d) >= monthStartStr),
+    ...overflowWorkingDays,
+  ];
   const fullWeekWorkingDaySet = new Set(fullWeekWorkingDays);
 
-  const allDays = eachDayOfInterval({
-    start: startOfMonth(new Date(year, month - 1)),
-    end: endOfMonth(new Date(year, month - 1)),
-  }).map((d) => format(d, "yyyy-MM-dd"));
+  const allDays = [
+    ...eachDayOfInterval({
+      start: startOfMonth(new Date(year, month - 1)),
+      end: endOfMonth(new Date(year, month - 1)),
+    }).map((d) => format(d, "yyyy-MM-dd")),
+    ...overflowCalendarDays,
+  ];
 
   const requestedOffMap: Record<number, Set<string>> = {};
   for (const r of requestedDaysOff) {
