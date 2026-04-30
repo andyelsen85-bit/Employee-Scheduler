@@ -28,12 +28,12 @@ const SHIFT_TYPE_COLORS: Record<string, string> = {
   jl: "bg-purple-500/15 text-purple-700 border-purple-500/20",
 };
 
-const DEFAULT_FORM = { code: "", label: "", hours: 8, type: "onsite", isActive: true };
+const DEFAULT_FORM = { code: "", label: "", hours: 8, type: "onsite", isActive: true, color: "" };
 
 export default function ShiftCodesConfig() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [dialog, setDialog] = useState<null | "create" | { code: string; label: string; hours: number; type: string; isActive: boolean }>(null);
+  const [dialog, setDialog] = useState<null | "create" | { code: string; label: string; hours: number; type: string; isActive: boolean; color?: string | null }>(null);
   const [form, setForm] = useState(DEFAULT_FORM);
 
   const { data: shiftCodes, isLoading } = useListShiftCodes({
@@ -48,17 +48,17 @@ export default function ShiftCodesConfig() {
     setDialog("create");
   };
 
-  type ShiftCode = { code: string; label: string; hours: number; type: string; isActive: boolean };
+  type ShiftCode = { code: string; label: string; hours: number; type: string; isActive: boolean; color?: string | null };
 
   const openEdit = (sc: ShiftCode) => {
-    setForm({ code: sc.code, label: sc.label, hours: sc.hours, type: sc.type, isActive: sc.isActive });
-    setDialog({ code: sc.code, label: sc.label, hours: sc.hours, type: sc.type, isActive: sc.isActive });
+    setForm({ code: sc.code, label: sc.label, hours: sc.hours, type: sc.type, isActive: sc.isActive, color: sc.color ?? "" });
+    setDialog(sc);
   };
 
   const handleSave = () => {
     if (dialog === "create") {
       createShiftCode.mutate(
-        { data: { code: form.code, label: form.label, hours: form.hours, type: form.type, isActive: form.isActive } },
+        { data: { code: form.code, label: form.label, hours: form.hours, type: form.type, isActive: form.isActive, color: form.color || null } },
         {
           onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: getListShiftCodesQueryKey() });
@@ -69,7 +69,7 @@ export default function ShiftCodesConfig() {
       );
     } else if (dialog) {
       updateShiftCode.mutate(
-        { code: (dialog as { code: string }).code, data: { label: form.label, hours: form.hours, type: form.type, isActive: form.isActive } },
+        { code: (dialog as { code: string }).code, data: { label: form.label, hours: form.hours, type: form.type, isActive: form.isActive, color: form.color || null } },
         {
           onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: getListShiftCodesQueryKey() });
@@ -212,6 +212,28 @@ export default function ShiftCodesConfig() {
               <div className="flex items-center justify-between">
                 <Label>Active</Label>
                 <Switch checked={form.isActive} onCheckedChange={(v) => setForm({ ...form, isActive: v })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Custom Color <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="color"
+                    value={form.color || "#3b82f6"}
+                    onChange={(e) => setForm({ ...form, color: e.target.value })}
+                    className="h-9 w-16 cursor-pointer rounded border border-input p-0.5"
+                  />
+                  <span className="text-sm text-muted-foreground font-mono">{form.color || "(type default)"}</span>
+                  {form.color && (
+                    <button
+                      type="button"
+                      className="text-xs text-muted-foreground underline"
+                      onClick={() => setForm({ ...form, color: "" })}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">Overrides the default type-based color in the planning view.</p>
               </div>
             </div>
             <DialogFooter>

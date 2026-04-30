@@ -11,6 +11,7 @@ export const officesTable = pgTable("offices", {
     .notNull()
     .$type<string[]>()
     .default([]),
+  color: text("color"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

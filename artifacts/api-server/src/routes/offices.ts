@@ -22,6 +22,7 @@ async function getOfficesWithEmployees() {
     deskCount: o.deskCount,
     deskCodes: (o.deskCodes as string[]) ?? [],
     heightAdjustableDesks: (o.heightAdjustableDesks as string[]) ?? [],
+    color: o.color ?? null,
     employeeIds: assignments.filter((a) => a.officeId === o.id).map((a) => a.employeeId),
   }));
 }
@@ -42,6 +43,7 @@ router.post("/offices", async (req, res): Promise<void> => {
       name: parsed.data.name,
       deskCount: parsed.data.deskCount,
       deskCodes: parsed.data.deskCodes ?? [],
+      color: parsed.data.color ?? null,
     })
     .returning();
 
@@ -57,6 +59,7 @@ router.post("/offices", async (req, res): Promise<void> => {
     deskCount: office.deskCount,
     deskCodes: (office.deskCodes as string[]) ?? [],
     heightAdjustableDesks: (office.heightAdjustableDesks as string[]) ?? [],
+    color: office.color ?? null,
     employeeIds: parsed.data.employeeIds ?? [],
   });
 });
@@ -77,6 +80,7 @@ router.put("/offices/:id", async (req, res): Promise<void> => {
   if (parsed.data.deskCount !== undefined) updateData.deskCount = parsed.data.deskCount;
   if (parsed.data.deskCodes !== undefined) updateData.deskCodes = parsed.data.deskCodes;
   if (parsed.data.heightAdjustableDesks !== undefined) updateData.heightAdjustableDesks = parsed.data.heightAdjustableDesks;
+  if ("color" in parsed.data) updateData.color = parsed.data.color ?? null;
 
   const [office] = await db
     .update(officesTable)
@@ -97,6 +101,7 @@ router.put("/offices/:id", async (req, res): Promise<void> => {
     deskCount: office.deskCount,
     deskCodes: (office.deskCodes as string[]) ?? [],
     heightAdjustableDesks: (office.heightAdjustableDesks as string[]) ?? [],
+    color: office.color ?? null,
     employeeIds: oeRows.map((a) => a.employeeId),
   });
 });

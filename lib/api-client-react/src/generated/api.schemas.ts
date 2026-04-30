@@ -70,6 +70,8 @@ export interface Employee {
   preferredOfficeId?: number | null;
   /** Custom onsite week ratio for the auto-planner (e.g. 0.5 = 50%). Null uses the default formula (floor(weeks/2)). */
   onsiteWeekRatio?: number | null;
+  /** Manual sort order for the planning view. Lower numbers appear first within a department group. */
+  displayOrder: number;
   notes?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -126,6 +128,8 @@ export interface UpdateEmployeeBody {
   preferredOfficeId?: number | null;
   /** Custom onsite week ratio (0.0–1.0). Null = use default formula. */
   onsiteWeekRatio?: number | null;
+  /** Manual sort order within the planning view group. */
+  displayOrder?: number;
   notes?: string | null;
 }
 
@@ -144,6 +148,8 @@ export interface Office {
   deskCodes: string[];
   /** Subset of deskCodes that are height-adjustable */
   heightAdjustableDesks?: string[];
+  /** Hex color used to display desk badges in the planning view (e.g. #1d4ed8) */
+  color?: string | null;
   /** Employees eligible to use this office */
   employeeIds: number[];
 }
@@ -157,6 +163,7 @@ export interface CreateOfficeBody {
   deskCount: number;
   deskCodes?: string[];
   heightAdjustableDesks?: string[];
+  color?: string | null;
   employeeIds?: number[];
 }
 
@@ -165,6 +172,7 @@ export interface UpdateOfficeBody {
   deskCount?: number;
   deskCodes?: string[];
   heightAdjustableDesks?: string[];
+  color?: string | null;
 }
 
 export interface ShiftCode {
@@ -174,6 +182,8 @@ export interface ShiftCode {
   /** onsite | homework | cowork | holiday | jl | other */
   type: string;
   isActive: boolean;
+  /** Custom hex color for this shift code in the planning view (overrides type default) */
+  color?: string | null;
 }
 
 export interface CreateShiftCodeBody {
@@ -182,6 +192,7 @@ export interface CreateShiftCodeBody {
   hours: number;
   type: string;
   isActive?: boolean;
+  color?: string | null;
 }
 
 export interface UpdateShiftCodeBody {
@@ -189,6 +200,7 @@ export interface UpdateShiftCodeBody {
   hours?: number;
   type?: string;
   isActive?: boolean;
+  color?: string | null;
 }
 
 export interface TemplateDayEntry {

@@ -123,6 +123,11 @@ export const ListEmployeesResponseItem = zod.object({
     .describe(
       "Custom onsite week ratio for the auto-planner (e.g. 0.5 = 50%). Null uses the default formula (floor(weeks\/2)).",
     ),
+  displayOrder: zod
+    .number()
+    .describe(
+      "Manual sort order for the planning view. Lower numbers appear first within a department group.",
+    ),
   notes: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -226,6 +231,11 @@ export const GetEmployeeResponse = zod.object({
     .describe(
       "Custom onsite week ratio for the auto-planner (e.g. 0.5 = 50%). Null uses the default formula (floor(weeks\/2)).",
     ),
+  displayOrder: zod
+    .number()
+    .describe(
+      "Manual sort order for the planning view. Lower numbers appear first within a department group.",
+    ),
   notes: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -268,6 +278,10 @@ export const UpdateEmployeeBody = zod.object({
     .describe(
       "Custom onsite week ratio (0.0–1.0). Null = use default formula.",
     ),
+  displayOrder: zod
+    .number()
+    .optional()
+    .describe("Manual sort order within the planning view group."),
   notes: zod.string().nullish(),
 });
 
@@ -329,6 +343,11 @@ export const UpdateEmployeeResponse = zod.object({
     .nullish()
     .describe(
       "Custom onsite week ratio for the auto-planner (e.g. 0.5 = 50%). Null uses the default formula (floor(weeks\/2)).",
+    ),
+  displayOrder: zod
+    .number()
+    .describe(
+      "Manual sort order for the planning view. Lower numbers appear first within a department group.",
     ),
   notes: zod.string().nullish(),
   createdAt: zod.coerce.date(),
@@ -412,6 +431,11 @@ export const UpdateEmployeeCountersResponse = zod.object({
     .describe(
       "Custom onsite week ratio for the auto-planner (e.g. 0.5 = 50%). Null uses the default formula (floor(weeks\/2)).",
     ),
+  displayOrder: zod
+    .number()
+    .describe(
+      "Manual sort order for the planning view. Lower numbers appear first within a department group.",
+    ),
   notes: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -431,6 +455,12 @@ export const ListOfficesResponseItem = zod.object({
     .array(zod.string())
     .optional()
     .describe("Subset of deskCodes that are height-adjustable"),
+  color: zod
+    .string()
+    .nullish()
+    .describe(
+      "Hex color used to display desk badges in the planning view (e.g. #1d4ed8)",
+    ),
   employeeIds: zod
     .array(zod.number())
     .describe("Employees eligible to use this office"),
@@ -445,6 +475,7 @@ export const CreateOfficeBody = zod.object({
   deskCount: zod.number(),
   deskCodes: zod.array(zod.string()).optional(),
   heightAdjustableDesks: zod.array(zod.string()).optional(),
+  color: zod.string().nullish(),
   employeeIds: zod.array(zod.number()).optional(),
 });
 
@@ -457,6 +488,7 @@ export const UpdateOfficeBody = zod.object({
   deskCount: zod.number().optional(),
   deskCodes: zod.array(zod.string()).optional(),
   heightAdjustableDesks: zod.array(zod.string()).optional(),
+  color: zod.string().nullish(),
 });
 
 export const UpdateOfficeResponse = zod.object({
@@ -470,6 +502,12 @@ export const UpdateOfficeResponse = zod.object({
     .array(zod.string())
     .optional()
     .describe("Subset of deskCodes that are height-adjustable"),
+  color: zod
+    .string()
+    .nullish()
+    .describe(
+      "Hex color used to display desk badges in the planning view (e.g. #1d4ed8)",
+    ),
   employeeIds: zod
     .array(zod.number())
     .describe("Employees eligible to use this office"),
@@ -501,6 +539,12 @@ export const UpdateOfficeEmployeesResponse = zod.object({
     .array(zod.string())
     .optional()
     .describe("Subset of deskCodes that are height-adjustable"),
+  color: zod
+    .string()
+    .nullish()
+    .describe(
+      "Hex color used to display desk badges in the planning view (e.g. #1d4ed8)",
+    ),
   employeeIds: zod
     .array(zod.number())
     .describe("Employees eligible to use this office"),
@@ -517,6 +561,12 @@ export const ListShiftCodesResponseItem = zod.object({
     .string()
     .describe("onsite | homework | cowork | holiday | jl | other"),
   isActive: zod.boolean(),
+  color: zod
+    .string()
+    .nullish()
+    .describe(
+      "Custom hex color for this shift code in the planning view (overrides type default)",
+    ),
 });
 export const ListShiftCodesResponse = zod.array(ListShiftCodesResponseItem);
 
@@ -526,6 +576,7 @@ export const CreateShiftCodeBody = zod.object({
   hours: zod.number(),
   type: zod.string(),
   isActive: zod.boolean().optional(),
+  color: zod.string().nullish(),
 });
 
 export const UpdateShiftCodeParams = zod.object({
@@ -537,6 +588,7 @@ export const UpdateShiftCodeBody = zod.object({
   hours: zod.number().optional(),
   type: zod.string().optional(),
   isActive: zod.boolean().optional(),
+  color: zod.string().nullish(),
 });
 
 export const UpdateShiftCodeResponse = zod.object({
@@ -547,6 +599,12 @@ export const UpdateShiftCodeResponse = zod.object({
     .string()
     .describe("onsite | homework | cowork | holiday | jl | other"),
   isActive: zod.boolean(),
+  color: zod
+    .string()
+    .nullish()
+    .describe(
+      "Custom hex color for this shift code in the planning view (overrides type default)",
+    ),
 });
 
 export const DeleteShiftCodeParams = zod.object({

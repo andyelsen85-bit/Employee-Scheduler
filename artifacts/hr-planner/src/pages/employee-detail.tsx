@@ -81,13 +81,14 @@ export default function EmployeeDetail() {
         weeklyContractHours: employee.weeklyContractHours,
         homeworkEligible: employee.homeworkEligible,
         coworkEligible: employee.coworkEligible,
-        permanenceGroup: employee.permanenceGroup ?? "",
+        permanenceGroup: employee.permanenceGroup != null ? String(employee.permanenceGroup) : "",
         isSpoc: employee.isSpoc,
         spocRotates: employee.spocRotates,
         isManagement: employee.isManagement,
-        departmentId: (employee as Record<string, unknown>).departmentId ?? null,
-        preferredOfficeId: (employee as Record<string, unknown>).preferredOfficeId ?? null,
-        onsiteWeekRatio: (employee as Record<string, unknown>).onsiteWeekRatio ?? null,
+        departmentId: employee.departmentId ?? null,
+        preferredOfficeId: employee.preferredOfficeId ?? null,
+        onsiteWeekRatio: employee.onsiteWeekRatio ?? null,
+        displayOrder: employee.displayOrder ?? 0,
         notes: employee.notes ?? "",
       });
       setCounters({
@@ -97,13 +98,13 @@ export default function EmployeeDetail() {
         homeworkDaysUsedThisYear: employee.homeworkDaysUsedThisYear,
       });
       setAllowedCodes(new Set(employee.allowedShiftCodes ?? []));
-      const rawPrefs = (employee as Record<string, unknown>).dayCodePreferences;
+      const rawPrefs = employee.dayCodePreferences;
       if (Array.isArray(rawPrefs)) {
         setDayPrefs(rawPrefs as DayPref[]);
       } else {
         setDayPrefs([]);
       }
-      setPrefersHA(!!((employee as Record<string, unknown>).prefersHeightAdjustableDesk));
+      setPrefersHA(!!(employee.prefersHeightAdjustableDesk));
     }
   }, [employee]);
 
@@ -118,6 +119,7 @@ export default function EmployeeDetail() {
           permanenceGroup: form.permanenceGroup ? Number(form.permanenceGroup) : null,
           permanenceLevel: null,
           preferredJlWeekday: null,
+          displayOrder: Number(form.displayOrder) || 0,
         } as Parameters<typeof updateEmployee.mutate>[0]["data"],
       },
       {
@@ -182,7 +184,7 @@ export default function EmployeeDetail() {
       {
         id,
         data: {
-          dayCodePreferences: dayPrefs as unknown as Record<string, string>,
+          dayCodePreferences: dayPrefs as Parameters<typeof updateEmployee.mutate>[0]["data"]["dayCodePreferences"],
           prefersHeightAdjustableDesk: prefersHA,
         } as Parameters<typeof updateEmployee.mutate>[0]["data"],
       },
@@ -287,7 +289,7 @@ export default function EmployeeDetail() {
               </div>
               <div className="space-y-1.5">
                 <Label>Permanence Group</Label>
-                <Select value={(form.permanenceGroup ?? "none") as string} onValueChange={(v) => setForm({ ...form, permanenceGroup: v === "none" ? null : v })}>
+                <Select value={form.permanenceGroup ? String(form.permanenceGroup) : "none"} onValueChange={(v) => setForm({ ...form, permanenceGroup: v === "none" ? "" : v })}>
                   <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">None</SelectItem>
@@ -350,6 +352,16 @@ export default function EmployeeDetail() {
                   Overrides the default onsite week distribution used by the auto-planner for this employee only.
                   Only applies when the employee is homework or cowork eligible.
                 </p>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Planning Display Order</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={String(form.displayOrder ?? 0)}
+                  onChange={(e) => setForm({ ...form, displayOrder: parseInt(e.target.value) || 0 })}
+                />
+                <p className="text-xs text-muted-foreground">Lower numbers appear first within their department group in the planning view.</p>
               </div>
               <Separator />
               <div className="space-y-3">

@@ -54,6 +54,7 @@ export default function Employees() {
           coworkEligible: true,
           allowedShiftCodes: ["X80", "TT6", "CW6", "C0", "JL"],
           isSpoc: false,
+          spocRotates: false,
           isManagement: false,
         },
       },
@@ -131,7 +132,7 @@ export default function Employees() {
                         {emp.isManagement && <Badge variant="secondary" className="text-xs"><Crown className="h-3 w-3 mr-1" />Mgmt</Badge>}
                         {emp.permanenceGroup && (
                           <Badge variant="outline" className="text-xs">
-                            G{emp.permanenceGroup}/L{emp.permanenceLevel}
+                            G{emp.permanenceGroup}
                           </Badge>
                         )}
                       </div>

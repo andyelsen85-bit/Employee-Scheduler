@@ -8,6 +8,7 @@ export const shiftCodesTable = pgTable("shift_codes", {
   hours: real("hours").notNull(),
   type: text("type").notNull(),
   isActive: boolean("is_active").notNull().default(true),
+  color: text("color"),
 });
 
 export const insertShiftCodeSchema = createInsertSchema(shiftCodesTable);

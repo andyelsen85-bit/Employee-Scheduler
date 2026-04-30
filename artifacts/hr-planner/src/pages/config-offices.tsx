@@ -25,13 +25,13 @@ import { useState, useEffect, KeyboardEvent } from "react";
 import { Plus, Pencil, Trash2, Building2, Users, KeyRound, X, ArrowUpDown, UserCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-type OfficeForm = { name: string; deskCount: number; deskCodes: string[]; heightAdjustableDesks: string[] };
+type OfficeForm = { name: string; deskCount: number; deskCodes: string[]; heightAdjustableDesks: string[]; color: string };
 
 export default function OfficesConfig() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [dialog, setDialog] = useState<null | "create" | number>(null);
-  const [form, setForm] = useState<OfficeForm>({ name: "", deskCount: 10, deskCodes: [], heightAdjustableDesks: [] });
+  const [form, setForm] = useState<OfficeForm>({ name: "", deskCount: 10, deskCodes: [], heightAdjustableDesks: [], color: "#3b82f6" });
   const [selectedEmployees, setSelectedEmployees] = useState<Set<number>>(new Set());
   const [newDeskCode, setNewDeskCode] = useState("");
   const [rotationOfficeId, setRotationOfficeId] = useState<string>("none");
@@ -75,14 +75,14 @@ export default function OfficesConfig() {
   const updateOfficeEmployees = useUpdateOfficeEmployees();
 
   const openCreate = () => {
-    setForm({ name: "", deskCount: 10, deskCodes: [], heightAdjustableDesks: [] });
+    setForm({ name: "", deskCount: 10, deskCodes: [], heightAdjustableDesks: [], color: "#3b82f6" });
     setSelectedEmployees(new Set());
     setNewDeskCode("");
     setDialog("create");
   };
 
-  const openEdit = (office: { id: number; name: string; deskCount: number; deskCodes: string[]; heightAdjustableDesks?: string[]; employeeIds: number[] }) => {
-    setForm({ name: office.name, deskCount: office.deskCount, deskCodes: [...office.deskCodes], heightAdjustableDesks: [...(office.heightAdjustableDesks ?? [])] });
+  const openEdit = (office: { id: number; name: string; deskCount: number; deskCodes: string[]; heightAdjustableDesks?: string[]; color?: string | null; employeeIds: number[] }) => {
+    setForm({ name: office.name, deskCount: office.deskCount, deskCodes: [...office.deskCodes], heightAdjustableDesks: [...(office.heightAdjustableDesks ?? [])], color: office.color ?? "#3b82f6" });
     setSelectedEmployees(new Set(office.employeeIds));
     setNewDeskCode("");
     setDialog(office.id);
@@ -117,12 +117,12 @@ export default function OfficesConfig() {
     const empIds = [...selectedEmployees];
     if (dialog === "create") {
       const office = await createOffice.mutateAsync({
-        data: { name: form.name, deskCount: form.deskCount, deskCodes: form.deskCodes, heightAdjustableDesks: form.heightAdjustableDesks, employeeIds: empIds },
+        data: { name: form.name, deskCount: form.deskCount, deskCodes: form.deskCodes, heightAdjustableDesks: form.heightAdjustableDesks, color: form.color || null, employeeIds: empIds },
       });
       await updateOfficeEmployees.mutateAsync({ id: office.id, data: { employeeIds: empIds } });
     } else if (typeof dialog === "number") {
       await Promise.all([
-        updateOffice.mutateAsync({ id: dialog, data: { name: form.name, deskCount: form.deskCount, deskCodes: form.deskCodes, heightAdjustableDesks: form.heightAdjustableDesks } }),
+        updateOffice.mutateAsync({ id: dialog, data: { name: form.name, deskCount: form.deskCount, deskCodes: form.deskCodes, heightAdjustableDesks: form.heightAdjustableDesks, color: form.color || null } }),
         updateOfficeEmployees.mutateAsync({ id: dialog, data: { employeeIds: empIds } }),
       ]);
     }
@@ -302,6 +302,21 @@ export default function OfficesConfig() {
                     onChange={(e) => setForm({ ...form, deskCount: parseInt(e.target.value) })}
                   />
                 </div>
+              </div>
+
+              {/* Color picker */}
+              <div className="space-y-1.5">
+                <Label>Planning View Color</Label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="color"
+                    value={form.color}
+                    onChange={(e) => setForm({ ...form, color: e.target.value })}
+                    className="h-9 w-16 cursor-pointer rounded border border-input p-0.5"
+                  />
+                  <span className="text-sm text-muted-foreground font-mono">{form.color}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">Color used for desk code badges in the planning view.</p>
               </div>
 
               {/* Shared desk pool */}

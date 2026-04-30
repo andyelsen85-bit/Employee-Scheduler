@@ -43,20 +43,22 @@ export default function Planning() {
 
   // Group employees: SPOC → Management → per dept (sorted by order) → ungrouped
   type EmpRow = NonNullable<typeof employees>[number];
+  const byDisplayOrder = (a: EmpRow, b: EmpRow) =>
+    (a.displayOrder ?? 0) - (b.displayOrder ?? 0);
   const buildGroups = (emps: EmpRow[], depts: NonNullable<typeof departments>) => {
-    const spoc = emps.filter(e => e.isSpoc);
-    const management = emps.filter(e => !e.isSpoc && e.isManagement);
-    const sortedDepts = [...depts].sort((a, b) => a.order - b.order);
+    const spoc = emps.filter(e => e.isSpoc).sort(byDisplayOrder);
+    const management = emps.filter(e => !e.isSpoc && e.isManagement).sort(byDisplayOrder);
+    const sortedDepts = [...depts].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     const deptGroups = sortedDepts.map(d => ({
       label: d.name,
-      emps: emps.filter(e => !e.isSpoc && !e.isManagement && (e as Record<string, unknown>).departmentId === d.id),
+      emps: emps.filter(e => !e.isSpoc && !e.isManagement && e.departmentId === d.id).sort(byDisplayOrder),
     })).filter(g => g.emps.length > 0);
     const assignedEmpIds = new Set([
       ...spoc.map(e => e.id),
       ...management.map(e => e.id),
       ...deptGroups.flatMap(g => g.emps.map(e => e.id)),
     ]);
-    const ungrouped = emps.filter(e => !assignedEmpIds.has(e.id));
+    const ungrouped = emps.filter(e => !assignedEmpIds.has(e.id)).sort(byDisplayOrder);
     const groups: { label: string | null; emps: EmpRow[] }[] = [];
     if (spoc.length) groups.push({ label: "SPOC", emps: spoc });
     if (management.length) groups.push({ label: "Management", emps: management });
@@ -80,6 +82,21 @@ export default function Planning() {
     (shiftCodes ?? []).map(sc => [sc.code, sc.type])
   );
 
+  // Per-code custom color overrides (from shift code config)
+  const shiftCodeColorMap = new Map<string, string>(
+    (shiftCodes ?? []).filter(sc => sc.color).map(sc => [sc.code, sc.color!])
+  );
+
+  // Build style from a hex color: bg at ~12% opacity, border at ~25%
+  const hexToStyle = (hex: string) => ({ bg: hex + "1e", text: hex, border: hex + "40" });
+
+  const getShiftStyle = (code: string) => {
+    const customHex = shiftCodeColorMap.get(code);
+    if (customHex) return hexToStyle(customHex);
+    const type = shiftTypeMap.get(code) ?? "other";
+    return SHIFT_TYPE_STYLE[type] ?? SHIFT_TYPE_STYLE.onsite;
+  };
+
   // Desk-code → office color map
   const OFFICE_PALETTE = [
     { bg: "#dbeafe", text: "#1d4ed8", border: "#bfdbfe" },
@@ -95,7 +112,9 @@ export default function Planning() {
   const allDeskCodes: { code: string; officeName: string }[] = [];
   if (offices) {
     offices.forEach((office, idx) => {
-      const color = OFFICE_PALETTE[idx % OFFICE_PALETTE.length];
+      const color = office.color
+        ? hexToStyle(office.color)
+        : OFFICE_PALETTE[idx % OFFICE_PALETTE.length];
       (office.deskCodes ?? []).forEach((code) => {
         deskColorMap.set(code, color);
         allDeskCodes.push({ code, officeName: office.name });
@@ -491,8 +510,7 @@ export default function Planning() {
                                     <PopoverTrigger asChild>
                                       {(() => {
                                         if (hasShift) {
-                                          const codeType = shiftTypeMap.get(entry!.shiftCode!);
-                                          const style = !hasViolation && codeType ? SHIFT_TYPE_STYLE[codeType] : null;
+                                          const style = !hasViolation ? getShiftStyle(entry!.shiftCode!) : null;
                                           return (
                                             <button
                                               className={`px-2 py-1 text-xs font-semibold rounded w-full border transition-colors hover:opacity-80 ${hasViolation ? 'bg-destructive/10 text-destructive border-destructive/30 ring-1 ring-destructive' : ''} ${entry!.isLocked ? 'ring-1 ring-amber-400' : ''}`}
@@ -519,7 +537,7 @@ export default function Planning() {
                                       </div>
                                       <div className="grid grid-cols-2 gap-1">
                                         {shiftCodes?.map(sc => {
-                                          const s = SHIFT_TYPE_STYLE[sc.type];
+                                          const s = getShiftStyle(sc.code);
                                           const isActive = sc.code === entry?.shiftCode;
                                           return (
                                             <button

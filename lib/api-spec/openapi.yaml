@@ -904,6 +904,9 @@ components:
           type: number
           nullable: true
           description: "Custom onsite week ratio for the auto-planner (e.g. 0.5 = 50%). Null uses the default formula (floor(weeks/2))."
+        displayOrder:
+          type: integer
+          description: "Manual sort order for the planning view. Lower numbers appear first within a department group."
         notes:
           type: string
           nullable: true
@@ -929,6 +932,7 @@ components:
         - holidayHoursRemaining
         - overtimeHours
         - homeworkDaysUsedThisYear
+        - displayOrder
         - createdAt
         - updatedAt
 
@@ -1054,6 +1058,9 @@ components:
           type: number
           nullable: true
           description: "Custom onsite week ratio (0.0–1.0). Null = use default formula."
+        displayOrder:
+          type: integer
+          description: "Manual sort order within the planning view group."
         notes:
           type: string
           nullable: true
@@ -1090,6 +1097,10 @@ components:
           items:
             type: string
           description: "Subset of deskCodes that are height-adjustable"
+        color:
+          type: string
+          nullable: true
+          description: "Hex color used to display desk badges in the planning view (e.g. #1d4ed8)"
         employeeIds:
           type: array
           items:
@@ -1121,6 +1132,9 @@ components:
           type: array
           items:
             type: string
+        color:
+          type: string
+          nullable: true
         employeeIds:
           type: array
           items:
@@ -1142,6 +1156,9 @@ components:
           type: array
           items:
             type: string
+        color:
+          type: string
+          nullable: true
 
     # SHIFT CODE
     ShiftCode:
@@ -1158,6 +1175,10 @@ components:
           description: "onsite | homework | cowork | holiday | jl | other"
         isActive:
           type: boolean
+        color:
+          type: string
+          nullable: true
+          description: "Custom hex color for this shift code in the planning view (overrides type default)"
       required: [code, label, hours, type, isActive]
 
     CreateShiftCodeBody:
@@ -1173,6 +1194,9 @@ components:
           type: string
         isActive:
           type: boolean
+        color:
+          type: string
+          nullable: true
       required: [code, label, hours, type]
 
     UpdateShiftCodeBody:
@@ -1186,6 +1210,9 @@ components:
           type: string
         isActive:
           type: boolean
+        color:
+          type: string
+          nullable: true
 
     # WEEK TEMPLATE
     WeekTemplate:
