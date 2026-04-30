@@ -12,6 +12,8 @@ import {
   planningMonthsTable,
   planningEntriesTable,
   permanenceOverridesTable,
+  spocRotationOverridesTable,
+  appSettingsTable,
 } from "@workspace/db";
 import { asc } from "drizzle-orm";
 
@@ -32,6 +34,8 @@ router.get("/backup/export", async (req, res): Promise<void> => {
     planningMonths,
     planningEntries,
     permanenceOverrides,
+    spocRotationOverrides,
+    appSettings,
   ] = await Promise.all([
     db.select().from(departmentsTable).orderBy(asc(departmentsTable.id)),
     db.select().from(officesTable).orderBy(asc(officesTable.id)),
@@ -44,10 +48,12 @@ router.get("/backup/export", async (req, res): Promise<void> => {
     db.select().from(planningMonthsTable).orderBy(asc(planningMonthsTable.id)),
     db.select().from(planningEntriesTable).orderBy(asc(planningEntriesTable.id)),
     db.select().from(permanenceOverridesTable).orderBy(asc(permanenceOverridesTable.id)),
+    db.select().from(spocRotationOverridesTable).orderBy(asc(spocRotationOverridesTable.id)),
+    db.select().from(appSettingsTable),
   ]);
 
   const backup = {
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
     tables: {
       departments,
@@ -61,6 +67,8 @@ router.get("/backup/export", async (req, res): Promise<void> => {
       planningMonths,
       planningEntries,
       permanenceOverrides,
+      spocRotationOverrides,
+      appSettings,
     },
   };
 
@@ -75,7 +83,8 @@ router.get("/backup/export", async (req, res): Promise<void> => {
 router.post("/backup/restore", async (req, res): Promise<void> => {
   const body = req.body as Record<string, unknown>;
 
-  if (!body || body.version !== 1 || typeof body.tables !== "object" || !body.tables) {
+  // Accept version 1 (legacy) and version 2 (adds spocRotationOverrides + appSettings)
+  if (!body || (body.version !== 1 && body.version !== 2) || typeof body.tables !== "object" || !body.tables) {
     res.status(400).json({ error: "Invalid backup file format" });
     return;
   }
@@ -93,6 +102,9 @@ router.post("/backup/restore", async (req, res): Promise<void> => {
       return;
     }
   }
+  // v2 tables — optional so old v1 backups can still be restored without error
+  const spocRotationOverrideRows = Array.isArray(tables.spocRotationOverrides) ? tables.spocRotationOverrides as Record<string, unknown>[] : [];
+  const appSettingRows = Array.isArray(tables.appSettings) ? tables.appSettings as Record<string, unknown>[] : [];
 
   const client = await pool.connect();
   try {
@@ -102,6 +114,7 @@ router.post("/backup/restore", async (req, res): Promise<void> => {
     // RESTART IDENTITY resets all serial sequences back to 1.
     await client.query(`
       TRUNCATE
+        spoc_rotation_overrides,
         permanence_overrides,
         planning_entries,
         planning_months,
@@ -115,6 +128,8 @@ router.post("/backup/restore", async (req, res): Promise<void> => {
         departments
       RESTART IDENTITY CASCADE
     `);
+    // app_settings uses a text PK (no serial); clear it separately
+    await client.query(`DELETE FROM "app_settings"`);
 
     // Ensure a value is a proper JSON string for JSONB columns.
     // pg serializes JS arrays as PostgreSQL array literals ({"a","b"}) instead of
@@ -325,11 +340,32 @@ router.post("/backup/restore", async (req, res): Promise<void> => {
       }
     }
 
+    // v2: SPOC rotation manual overrides
+    for (const row of spocRotationOverrideRows) {
+      await client.query(
+        `INSERT INTO "spoc_rotation_overrides" ("id","year","week_number","employee_id","is_manual") OVERRIDING SYSTEM VALUE VALUES ($1,$2,$3,$4,$5)`,
+        [
+          row.id, row.year,
+          row.weekNumber ?? row.week_number,
+          row.employeeId ?? row.employee_id,
+          row.isManual ?? row.is_manual ?? true,
+        ]
+      );
+    }
+
+    // v2: App settings (text PK, no serial — INSERT OR REPLACE pattern)
+    for (const row of appSettingRows) {
+      await client.query(
+        `INSERT INTO "app_settings" ("key","value") VALUES ($1,$2)`,
+        [row.key, row.value ?? null]
+      );
+    }
+
     // Reset all serial sequences to avoid PK collisions on future inserts
     const serialTables = [
       "departments", "offices", "monthly_configs", "public_holidays",
       "employees", "week_templates", "planning_months",
-      "planning_entries", "permanence_overrides",
+      "planning_entries", "permanence_overrides", "spoc_rotation_overrides",
     ];
     for (const tbl of serialTables) {
       await client.query(
