@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Users, Calendar, Home, Building2, Clock, CalendarDays, CalendarRange, Shield, LogOut, Layers } from "lucide-react";
+import { Users, Calendar, Home, Building2, Clock, CalendarDays, CalendarRange, Shield, LogOut, Layers, DatabaseBackup } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { logout } from "@/hooks/use-auth";
 
@@ -14,6 +14,7 @@ const navigation = [
   { name: "Shift Codes", href: "/config/shift-codes", icon: Clock },
   { name: "Holidays", href: "/config/holidays", icon: CalendarDays },
   { name: "Monthly Config", href: "/config/monthly", icon: CalendarRange },
+  { name: "Backup & Restore", href: "/config/backup", icon: DatabaseBackup },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {

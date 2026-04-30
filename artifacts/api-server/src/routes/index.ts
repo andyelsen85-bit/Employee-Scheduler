@@ -10,6 +10,7 @@ import holidaysRouter from "./holidays.js";
 import planningRouter from "./planning.js";
 import dashboardRouter from "./dashboard.js";
 import { permanenceRouter } from "./permanence.js";
+import backupRouter from "./backup.js";
 
 const router: IRouter = Router();
 
@@ -24,5 +25,6 @@ router.use(holidaysRouter);
 router.use(planningRouter);
 router.use(dashboardRouter);
 router.use("/permanence", permanenceRouter);
+router.use(backupRouter);
 
 export default router;

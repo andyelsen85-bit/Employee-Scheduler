@@ -17,6 +17,7 @@ import ShiftCodesConfig from "@/pages/config-shift-codes";
 import HolidaysConfig from "@/pages/config-holidays";
 import MonthlyConfig from "@/pages/config-monthly";
 import Permanence from "@/pages/permanence";
+import BackupRestore from "@/pages/config-backup";
 
 const queryClient = new QueryClient();
 
@@ -39,6 +40,7 @@ function Router() {
       <Route path="/config/holidays" component={HolidaysConfig} />
       <Route path="/config/monthly" component={MonthlyConfig} />
       <Route path="/permanence/:year" component={Permanence} />
+      <Route path="/config/backup" component={BackupRestore} />
       <Route component={NotFound} />
     </Switch>
   );
