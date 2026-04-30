@@ -20,6 +20,7 @@ export type EmployeeRecord = {
   permanenceGroup: number | null;
   permanenceLevel: number | null;
   isSpoc: boolean;
+  spocRotates: boolean;
   isManagement: boolean;
   prmCounter: number;
   homeworkDaysUsedThisYear: number;
@@ -408,6 +409,9 @@ export function generatePlanning(params: {
       .sort((a, b) => a.id - b.id); // deterministic order → deterministic offsets
 
     satMultiEmps.forEach((emp, empIdx) => {
+      // SPOC rotation employees are handled separately below — skip satellite cycling
+      // for them so they stay at their preferred office except in their designated week.
+      if (emp.spocRotates) return;
       const empOfficeList = offices.filter((o) => o.employeeIds.includes(emp.id));
       if (!weeklyPreferredOffice[emp.id]) weeklyPreferredOffice[emp.id] = {};
       weekStarts.forEach((wk, wkIdx) => {
