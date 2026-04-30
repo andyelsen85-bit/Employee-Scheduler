@@ -64,7 +64,7 @@ spocRotationRouter.get("/spoc-rotation/:year", async (req, res) => {
   const spocs = await db
     .select({ id: employeesTable.id, name: employeesTable.name })
     .from(employeesTable)
-    .where(eq(employeesTable.isSpoc, true));
+    .where(eq(employeesTable.spocRotates, true));
 
   const overrides = await db
     .select()

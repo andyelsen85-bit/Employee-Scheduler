@@ -83,6 +83,7 @@ export default function EmployeeDetail() {
         coworkEligible: employee.coworkEligible,
         permanenceGroup: employee.permanenceGroup ?? "",
         isSpoc: employee.isSpoc,
+        spocRotates: employee.spocRotates,
         isManagement: employee.isManagement,
         departmentId: (employee as Record<string, unknown>).departmentId ?? null,
         preferredOfficeId: (employee as Record<string, unknown>).preferredOfficeId ?? null,
@@ -363,6 +364,13 @@ export default function EmployeeDetail() {
                 <div className="flex items-center justify-between">
                   <Label>SPOC</Label>
                   <Switch checked={Boolean(form.isSpoc)} onCheckedChange={(v) => setForm({ ...form, isSpoc: v })} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label className="flex flex-col gap-0.5">
+                    <span>Participates in SPOC rotation</span>
+                    <span className="text-xs text-muted-foreground font-normal">Included in the weekly rotation schedule</span>
+                  </Label>
+                  <Switch checked={Boolean(form.spocRotates)} onCheckedChange={(v) => setForm({ ...form, spocRotates: v })} />
                 </div>
                 <div className="flex items-center justify-between">
                   <Label>Management</Label>

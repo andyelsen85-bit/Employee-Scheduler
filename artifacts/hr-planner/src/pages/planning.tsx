@@ -218,12 +218,13 @@ export default function Planning() {
     }
   };
 
-  const handleUpdateShift = (entryId: number, shiftCode: string) => {
-    updateEntry.mutate({ id: entryId, data: { shiftCode: shiftCode || null } }, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getGetMonthPlanningQueryKey(year, month) });
-      }
-    });
+  const handleUpdateShift = (entryId: number, shiftCode: string, currentDeskCode?: string | null) => {
+    const codeType = shiftTypeMap.get(shiftCode);
+    const shouldClearDesk = !!currentDeskCode && codeType !== "onsite";
+    updateEntry.mutate(
+      { id: entryId, data: { shiftCode: shiftCode || null, ...(shouldClearDesk ? { deskCode: null } : {}) } },
+      { onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetMonthPlanningQueryKey(year, month) }) }
+    );
   };
 
   const handleUpdateDesk = (entryId: number, deskCode: string | null) => {
@@ -524,7 +525,7 @@ export default function Planning() {
                                             <button
                                               key={sc.code}
                                               onClick={() => hasShift
-                                                ? handleUpdateShift(entry!.id, sc.code)
+                                                ? handleUpdateShift(entry!.id, sc.code, entry?.deskCode)
                                                 : handleCreateEntry(emp.id, dateStr, sc.code)
                                               }
                                               className={`text-xs font-semibold px-2 py-1.5 rounded border transition-colors hover:opacity-80 ${isActive ? 'ring-2 ring-offset-1' : ''}`}
@@ -539,7 +540,7 @@ export default function Planning() {
                                             size="sm"
                                             variant="outline"
                                             className="text-destructive text-xs col-span-2"
-                                            onClick={() => handleUpdateShift(entry!.id, "")}
+                                            onClick={() => handleUpdateShift(entry!.id, "", entry?.deskCode)}
                                           >
                                             Clear shift
                                           </Button>

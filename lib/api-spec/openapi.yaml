@@ -860,6 +860,8 @@ components:
           description: "1 (primary) or 2 (escalation)"
         isSpoc:
           type: boolean
+        spocRotates:
+          type: boolean
         isManagement:
           type: boolean
         prmCounter:
@@ -921,6 +923,7 @@ components:
         - coworkEligible
         - allowedShiftCodes
         - isSpoc
+        - spocRotates
         - isManagement
         - prmCounter
         - holidayHoursRemaining
@@ -956,6 +959,8 @@ components:
           nullable: true
         isSpoc:
           type: boolean
+        spocRotates:
+          type: boolean
         isManagement:
           type: boolean
         prmCounter:
@@ -989,6 +994,7 @@ components:
         - coworkEligible
         - allowedShiftCodes
         - isSpoc
+        - spocRotates
         - isManagement
 
     UpdateEmployeeBody:
@@ -1017,6 +1023,8 @@ components:
           type: integer
           nullable: true
         isSpoc:
+          type: boolean
+        spocRotates:
           type: boolean
         isManagement:
           type: boolean

@@ -784,7 +784,8 @@ export function generatePlanning(params: {
       // → satellite rotation preferred office → rest.
       const empOfficesFull = offices.filter((o) => o.employeeIds.includes(emp.id));
       const rotationPreferredOfficeId = weeklyPreferredOffice[emp.id]?.[weekStart];
-      const effectivePreferredOfficeId = emp.preferredOfficeId ?? rotationPreferredOfficeId;
+      // Rotation office always overrides the employee's normal preferred office
+      const effectivePreferredOfficeId = rotationPreferredOfficeId ?? emp.preferredOfficeId;
       const empOffices = effectivePreferredOfficeId
         ? [
             ...empOfficesFull.filter((o) => o.id === effectivePreferredOfficeId),
@@ -1002,7 +1003,8 @@ export function generatePlanning(params: {
       // desks already assigned today by other partial-week employees (dailyPool) are also unavailable.
       const wk = getWeekNumber(entry.date);
       const rotationPreferredOfficeId = weeklyPreferredOffice[emp.id]?.[wk];
-      const effectivePreferredOfficeId = emp.preferredOfficeId ?? rotationPreferredOfficeId;
+      // Rotation office always overrides the employee's normal preferred office
+      const effectivePreferredOfficeId = rotationPreferredOfficeId ?? emp.preferredOfficeId;
       const empOfficesOrdered = effectivePreferredOfficeId
         ? [
             ...empOfficesFull.filter((o) => o.id === effectivePreferredOfficeId),

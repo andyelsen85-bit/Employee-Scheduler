@@ -51,6 +51,7 @@ export interface Employee {
   /** 1 (primary) or 2 (escalation) */
   permanenceLevel?: number | null;
   isSpoc: boolean;
+  spocRotates: boolean;
   isManagement: boolean;
   /** Running PRM balance in hours */
   prmCounter: number;
@@ -85,6 +86,7 @@ export interface CreateEmployeeBody {
   permanenceGroup?: number | null;
   permanenceLevel?: number | null;
   isSpoc: boolean;
+  spocRotates: boolean;
   isManagement: boolean;
   prmCounter?: number;
   holidayHoursRemaining?: number;
@@ -115,6 +117,7 @@ export interface UpdateEmployeeBody {
   permanenceGroup?: number | null;
   permanenceLevel?: number | null;
   isSpoc?: boolean;
+  spocRotates?: boolean;
   isManagement?: boolean;
   dayCodePreferences?: UpdateEmployeeBodyDayCodePreferencesItem[] | null;
   prefersHeightAdjustableDesk?: boolean | null;

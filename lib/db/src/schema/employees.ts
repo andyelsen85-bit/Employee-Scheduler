@@ -27,6 +27,7 @@ export const employeesTable = pgTable("employees", {
   permanenceGroup: integer("permanence_group"),
   permanenceLevel: integer("permanence_level"),
   isSpoc: boolean("is_spoc").notNull().default(false),
+  spocRotates: boolean("spoc_rotates").notNull().default(false),
   isManagement: boolean("is_management").notNull().default(false),
   prmCounter: real("prm_counter").notNull().default(0),
   holidayHoursRemaining: real("holiday_hours_remaining").notNull().default(273.6),

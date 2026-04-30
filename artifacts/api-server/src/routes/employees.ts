@@ -38,6 +38,7 @@ router.post("/employees", async (req, res): Promise<void> => {
       permanenceGroup: data.permanenceGroup ?? null,
       permanenceLevel: data.permanenceLevel ?? null,
       isSpoc: data.isSpoc,
+      spocRotates: data.spocRotates ?? false,
       isManagement: data.isManagement,
       prmCounter: data.prmCounter ?? 0,
       holidayHoursRemaining: data.holidayHoursRemaining ?? 273.6,
@@ -91,6 +92,7 @@ router.put("/employees/:id", async (req, res): Promise<void> => {
   if (data.permanenceGroup !== undefined) updateData.permanenceGroup = data.permanenceGroup ?? null;
   if (data.permanenceLevel !== undefined) updateData.permanenceLevel = data.permanenceLevel ?? null;
   if (data.isSpoc !== undefined) updateData.isSpoc = data.isSpoc;
+  if (data.spocRotates !== undefined) updateData.spocRotates = data.spocRotates;
   if (data.isManagement !== undefined) updateData.isManagement = data.isManagement;
   if (data.dayCodePreferences !== undefined) updateData.dayCodePreferences = (data.dayCodePreferences ?? null) as unknown as Record<string, string> | null;
   if (data.prefersHeightAdjustableDesk !== undefined) updateData.prefersHeightAdjustableDesk = data.prefersHeightAdjustableDesk ?? undefined;

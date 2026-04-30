@@ -84,6 +84,7 @@ export const ListEmployeesResponseItem = zod.object({
     .nullish()
     .describe("1 (primary) or 2 (escalation)"),
   isSpoc: zod.boolean(),
+  spocRotates: zod.boolean(),
   isManagement: zod.boolean(),
   prmCounter: zod.number().describe("Running PRM balance in hours"),
   holidayHoursRemaining: zod.number().describe("Remaining holiday hours"),
@@ -142,6 +143,7 @@ export const CreateEmployeeBody = zod.object({
   permanenceGroup: zod.number().nullish(),
   permanenceLevel: zod.number().nullish(),
   isSpoc: zod.boolean(),
+  spocRotates: zod.boolean(),
   isManagement: zod.boolean(),
   prmCounter: zod.number().optional(),
   holidayHoursRemaining: zod.number().optional(),
@@ -185,6 +187,7 @@ export const GetEmployeeResponse = zod.object({
     .nullish()
     .describe("1 (primary) or 2 (escalation)"),
   isSpoc: zod.boolean(),
+  spocRotates: zod.boolean(),
   isManagement: zod.boolean(),
   prmCounter: zod.number().describe("Running PRM balance in hours"),
   holidayHoursRemaining: zod.number().describe("Remaining holiday hours"),
@@ -243,6 +246,7 @@ export const UpdateEmployeeBody = zod.object({
   permanenceGroup: zod.number().nullish(),
   permanenceLevel: zod.number().nullish(),
   isSpoc: zod.boolean().optional(),
+  spocRotates: zod.boolean().optional(),
   isManagement: zod.boolean().optional(),
   dayCodePreferences: zod
     .array(
@@ -287,6 +291,7 @@ export const UpdateEmployeeResponse = zod.object({
     .nullish()
     .describe("1 (primary) or 2 (escalation)"),
   isSpoc: zod.boolean(),
+  spocRotates: zod.boolean(),
   isManagement: zod.boolean(),
   prmCounter: zod.number().describe("Running PRM balance in hours"),
   holidayHoursRemaining: zod.number().describe("Remaining holiday hours"),
@@ -368,6 +373,7 @@ export const UpdateEmployeeCountersResponse = zod.object({
     .nullish()
     .describe("1 (primary) or 2 (escalation)"),
   isSpoc: zod.boolean(),
+  spocRotates: zod.boolean(),
   isManagement: zod.boolean(),
   prmCounter: zod.number().describe("Running PRM balance in hours"),
   holidayHoursRemaining: zod.number().describe("Remaining holiday hours"),

@@ -1,23 +1,15 @@
 import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { format, parseISO } from "date-fns";
-import { ChevronLeft, ChevronRight, RefreshCw, UserCheck, Users } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, UserCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Layout } from "@/components/layout";
 
 interface SpocEmployee {
   id: number;
   name: string;
-}
-
-interface AllEmployee {
-  id: number;
-  name: string;
-  isSpoc: boolean;
 }
 
 interface WeekEntry {
@@ -41,21 +33,6 @@ async function fetchRotation(year: number): Promise<RotationData> {
   return res.json();
 }
 
-async function fetchAllEmployees(): Promise<AllEmployee[]> {
-  const res = await fetch("/api/employees");
-  if (!res.ok) throw new Error("Failed to load employees");
-  return res.json();
-}
-
-async function setEmployeeSpoc(id: number, isSpoc: boolean): Promise<void> {
-  const res = await fetch(`/api/employees/${id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ isSpoc }),
-  });
-  if (!res.ok) throw new Error("Failed to update employee");
-}
-
 async function saveOverride(year: number, week: number, employeeId: number | null) {
   const res = await fetch(`/api/spoc-rotation/${year}/${week}`, {
     method: "PUT",
@@ -77,22 +54,15 @@ export default function SpocRotationPage() {
   const currentYear = parseInt(params.year ?? String(new Date().getFullYear()), 10);
 
   const [data, setData] = useState<RotationData | null>(null);
-  const [allEmployees, setAllEmployees] = useState<AllEmployee[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState<number | null>(null);
-  const [togglingSpoc, setTogglingSpoc] = useState<number | null>(null);
 
   const load = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [rotation, employees] = await Promise.all([
-        fetchRotation(currentYear),
-        fetchAllEmployees(),
-      ]);
-      setData(rotation);
-      setAllEmployees(employees);
+      setData(await fetchRotation(currentYear));
     } catch (e) {
       setError(String(e));
     } finally {
@@ -101,23 +71,6 @@ export default function SpocRotationPage() {
   };
 
   useEffect(() => { load(); }, [currentYear]);
-
-  const handleToggleSpoc = async (emp: AllEmployee) => {
-    setTogglingSpoc(emp.id);
-    const newValue = !emp.isSpoc;
-    try {
-      await setEmployeeSpoc(emp.id, newValue);
-      setAllEmployees((prev) =>
-        prev.map((e) => e.id === emp.id ? { ...e, isSpoc: newValue } : e)
-      );
-      const rotation = await fetchRotation(currentYear);
-      setData(rotation);
-    } catch {
-      alert("Failed to update employee");
-    } finally {
-      setTogglingSpoc(null);
-    }
-  };
 
   const handleChange = async (week: number, employeeId: number | null) => {
     setSaving(week);
@@ -151,8 +104,6 @@ export default function SpocRotationPage() {
   const spocNames: Record<number, string> = {};
   data?.spocs.forEach((s) => { spocNames[s.id] = s.name; });
 
-  const sortedEmployees = [...allEmployees].sort((a, b) => a.name.localeCompare(b.name));
-
   return (
     <Layout>
       <div className="flex flex-col gap-6">
@@ -164,6 +115,7 @@ export default function SpocRotationPage() {
             </h1>
             <p className="text-muted-foreground mt-1 text-sm">
               One SPOC employee is assigned to the rotation office each week.
+              Enable <em>Participates in SPOC rotation</em> on an employee's profile to include them here.
               {data?.rotationOfficeId == null && (
                 <span className="text-destructive font-medium"> No rotation office configured — set it in Offices config.</span>
               )}
@@ -186,84 +138,46 @@ export default function SpocRotationPage() {
 
         {error && <div className="text-destructive text-sm">{error}</div>}
 
-        {/* Rotation pool management */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Users className="h-4 w-4" />
-              Rotation Pool
-              <span className="text-muted-foreground font-normal text-sm ml-1">
-                — toggle which employees participate in SPOC rotation
-              </span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {allEmployees.length === 0 && loading && (
-              <p className="text-muted-foreground text-sm">Loading…</p>
-            )}
-            <div className="flex flex-wrap gap-3">
-              {sortedEmployees.map((emp) => (
-                <div
-                  key={emp.id}
-                  className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
-                    emp.isSpoc
-                      ? "border-primary/50 bg-primary/5"
-                      : "border-border bg-muted/30"
-                  }`}
-                >
-                  <Switch
-                    checked={emp.isSpoc}
-                    onCheckedChange={() => handleToggleSpoc(emp)}
-                    disabled={togglingSpoc === emp.id}
-                  />
-                  <span className={emp.isSpoc ? "font-medium" : "text-muted-foreground"}>
-                    {emp.name}
-                  </span>
-                  {emp.isSpoc && (
-                    <Badge variant="outline" className="text-xs border-primary/50 text-primary py-0">
-                      SPOC
-                    </Badge>
-                  )}
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        {loading && !data && (
+          <div className="text-muted-foreground text-sm">Loading…</div>
+        )}
 
-        {/* Weekly schedule */}
         {data && (
-          <div className="overflow-x-auto rounded-xl border">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-muted/50">
-                  <th className="text-left px-4 py-2 font-semibold">Week</th>
-                  <th className="text-left px-4 py-2 font-semibold">Dates</th>
-                  <th className="text-left px-4 py-2 font-semibold">SPOC at rotation office</th>
-                  <th className="px-4 py-2"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.weeks.map((w) => {
-                  const empName = w.employeeId != null ? (spocNames[w.employeeId] ?? `#${w.employeeId}`) : "—";
-                  const isSaving = saving === w.week;
-                  return (
-                    <tr key={w.week} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
-                      <td className="px-4 py-2 font-mono text-muted-foreground">W{String(w.week).padStart(2, "0")}</td>
-                      <td className="px-4 py-2 text-muted-foreground">
-                        {format(parseISO(w.weekStart), "MMM d")} – {getWeekEnd(w.weekStart)}
-                      </td>
-                      <td className="px-4 py-2">
-                        {data.spocs.length === 0 ? (
-                          <span className="text-muted-foreground italic text-xs">No SPOCs in pool</span>
-                        ) : (
+          <>
+            {data.spocs.length === 0 && (
+              <div className="text-muted-foreground text-sm border rounded-lg p-4">
+                No employees have rotation enabled. Go to an employee's profile and turn on <strong>Participates in SPOC rotation</strong>.
+              </div>
+            )}
+
+            <div className="overflow-x-auto rounded-xl border">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/50">
+                    <th className="text-left px-4 py-2 font-semibold">Week</th>
+                    <th className="text-left px-4 py-2 font-semibold">Dates</th>
+                    <th className="text-left px-4 py-2 font-semibold">SPOC at rotation office</th>
+                    <th className="px-4 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.weeks.map((w) => {
+                    const isSaving = saving === w.week;
+                    return (
+                      <tr key={w.week} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                        <td className="px-4 py-2 font-mono text-muted-foreground">W{String(w.week).padStart(2, "0")}</td>
+                        <td className="px-4 py-2 text-muted-foreground">
+                          {format(parseISO(w.weekStart), "MMM d")} – {getWeekEnd(w.weekStart)}
+                        </td>
+                        <td className="px-4 py-2">
                           <div className="flex items-center gap-2">
                             <Select
                               value={w.employeeId != null ? String(w.employeeId) : "none"}
                               onValueChange={(v) => handleChange(w.week, v === "none" ? null : parseInt(v, 10))}
-                              disabled={isSaving}
+                              disabled={isSaving || data.spocs.length === 0}
                             >
                               <SelectTrigger className="w-52 h-8 text-sm">
-                                <SelectValue />
+                                <SelectValue placeholder="— none —" />
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="none">— none —</SelectItem>
@@ -276,31 +190,27 @@ export default function SpocRotationPage() {
                               <Badge variant="outline" className="text-xs border-amber-500 text-amber-600">manual</Badge>
                             )}
                           </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-2 text-right">
-                        {w.isManual && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-xs text-muted-foreground hover:text-foreground"
-                            onClick={() => handleReset(w.week)}
-                            disabled={isSaving}
-                          >
-                            Reset to auto
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {loading && !data && (
-          <div className="text-muted-foreground text-sm">Loading…</div>
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          {w.isManual && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-xs text-muted-foreground hover:text-foreground"
+                              onClick={() => handleReset(w.week)}
+                              disabled={isSaving}
+                            >
+                              Reset to auto
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
     </Layout>
