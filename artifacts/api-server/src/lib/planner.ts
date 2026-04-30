@@ -694,12 +694,35 @@ export function generatePlanning(params: {
     // C0 and JL locked entries contribute 0h so they don't affect this sum.
     const effectiveTarget = Math.max(0, empTarget - prevOverflowShiftH - lockedCurrentShiftHours);
 
-    let hoursJL = 0;
+    // Compute neededJL using the hour-based formula when possible, falling back to the
+    // day-based proportionalJL only when hours are unavailable.
+    //
+    // IMPORTANT: do NOT take max(proportionalJL, hoursJL).  The old approach let the
+    // day-based proportionalJL override the hours formula, causing employees with
+    // short-code weekdays (e.g. Ben's Wed preference = TT4/X78 at 4h) to receive too
+    // many JL days: proportionalJL assumed every day = typicalShiftHours (8h), but the
+    // weighted average over Ben's actual preferences is ~7.3h, so one extra JL was added,
+    // leaving only 7 shift days generating ~51h instead of the 60h effectiveTarget.
+    //
+    // Fix: when the hours formula applies (weightedAvgHours > 0 and candidate days
+    // would exceed effectiveTarget if all used as shifts), derive JL from how many shift
+    // days are actually needed to hit effectiveTarget at the weighted average:
+    //   shiftDaysNeeded = ceil(effectiveTarget / weightedAvgHours)
+    //   neededJL        = candidateDays - shiftDaysNeeded
+    // This keeps the residual (±1 day) tiny enough for Phase 4 to correct without
+    // generating a systematic hour deficit.
+    let neededJL: number;
     if (weightedAvgHours > 0 && totalExpectedIfAllShift > effectiveTarget) {
-      hoursJL = Math.ceil(candidateShiftDays.length - effectiveTarget / weightedAvgHours);
+      neededJL = Math.max(
+        0,
+        candidateShiftDays.length - Math.ceil(effectiveTarget / weightedAvgHours)
+      );
+    } else {
+      // All candidate codes have 0h (e.g. pure JL employee) or the candidate days cannot
+      // cover the full effectiveTarget anyway — fall back to the day-based proportional
+      // formula which correctly handles the C0/preConfigJL offset.
+      neededJL = proportionalJL;
     }
-
-    let neededJL = Math.max(proportionalJL, hoursJL);
 
     // Reduce by JL days already planned:
     //  a) Previous month's overflow entries for this month's initial partial-week days.
