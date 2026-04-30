@@ -1167,32 +1167,37 @@ export function generatePlanning(params: {
 
   // ── PHASE 4: Hour-correction pass ───────────────────────────────────────────
   // For employees whose planned hours still exceed their contractual target by more
-  // than a small tolerance (half a typical shift), substitute random non-locked
-  // shift days with JL until the overshoot is within bounds.
-  // This catches cases where the Phase 1 JL formula could not be solved exactly
-  // (e.g., 9h shift codes, fractional contract percentages, or weekday-preference
-  // enforcement that forces a specific number of JL days regardless of hours).
-  const HOUR_OVERSHOOT_TOLERANCE = 4; // hours — half an 8h day
+  // than a small tolerance, substitute random non-locked shift days with JL until
+  // the overshoot is within bounds.
+  //
+  // We count hours by month prefix (matching the frontend) rather than by the
+  // overflow set.  This is critical for employees like Dirk (all 9h codes) whose
+  // full-week hours are within target but whose same-month overflow days (e.g.
+  // Mar 30–31 in the March plan, date prefix "2026-03-") push the total over.
+  const HOUR_OVERSHOOT_TOLERANCE = 4; // hours — roughly half an 8h day
+  const monthPrefix = `${year}-${String(month).padStart(2, "0")}-`;
 
   for (const emp of employees) {
     const target = empBaseContractualHours[emp.id] ?? contractualHours;
 
-    // Sum hours for this-month (non-overflow) entries only
+    // Mirror exactly what the frontend's getEmployeePlannedHours does:
+    // count all non-JL entries whose date starts with this month's prefix.
     let plannedThisMonth = 0;
     for (const e of entries) {
-      if (e.employeeId !== emp.id || overflowWorkingDaySet.has(e.date)) continue;
+      if (e.employeeId !== emp.id || !e.date.startsWith(monthPrefix)) continue;
       plannedThisMonth += hoursForCode(e.shiftCode, shiftCodes);
     }
 
     const overshoot = plannedThisMonth - target;
     if (overshoot <= HOUR_OVERSHOOT_TOLERANCE) continue;
 
-    // Collect convertible entries: this-month, non-locked, real shift codes (not JL/C0),
-    // not on permanence duty. Prefer homework/cowork over onsite to protect the onsite ratio.
+    // Collect convertible entries: same month prefix, non-locked, real shift codes
+    // (not JL/C0), not on permanence duty.
+    // Prefer homework/cowork over onsite to protect the onsite ratio.
     const convertible = entries.filter(
       (e) =>
         e.employeeId === emp.id &&
-        !overflowWorkingDaySet.has(e.date) &&
+        e.date.startsWith(monthPrefix) &&
         !e.isLocked &&
         e.shiftCode !== null &&
         e.shiftCode !== "JL" &&
