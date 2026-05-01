@@ -12,6 +12,7 @@ import dashboardRouter from "./dashboard.js";
 import { permanenceRouter } from "./permanence.js";
 import backupRouter from "./backup.js";
 import { spocRotationRouter } from "./spocRotation.js";
+import excelPlanningRouter from "./excelPlanning.js";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(dashboardRouter);
 router.use("/permanence", permanenceRouter);
 router.use(backupRouter);
 router.use(spocRotationRouter);
+router.use(excelPlanningRouter);
 
 export default router;

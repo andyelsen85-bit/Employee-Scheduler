@@ -152,6 +152,100 @@ async function getOrCreateMonth(year: number, month: number) {
   return created;
 }
 
+/** Week key: ISO week start date (Monday) as YYYY-MM-DD */
+function weekStartKey(dateStr: string): string {
+  const d = new Date(dateStr + "T12:00:00Z");
+  const dow = d.getUTCDay(); // 0=Sun 6=Sat
+  const diff = dow === 0 ? -6 : 1 - dow; // days to Monday
+  const mon = new Date(d);
+  mon.setUTCDate(d.getUTCDate() + diff);
+  return mon.toISOString().slice(0, 10);
+}
+
+type OfficeRec = { id: number; deskCodes: string[]; heightAdjustableDesks: string[]; employeeIds: number[] };
+type ShiftCodeMap = Record<string, { code: string; hours: number; type: string }>;
+type EmpRec = { id: number; preferredOfficeId: number | null; prefersHeightAdjustableDesk: boolean };
+
+/**
+ * After generation, assign desks to locked planning entries that have an onsite
+ * shift code but no desk code (common when imported from Excel with only the shift
+ * row filled in). Uses a weekly desk pool to avoid collisions.
+ */
+async function assignDesksToLockedNoDeskEntries(
+  planningMonthId: number,
+  offices: OfficeRec[],
+  shiftCodes: ShiftCodeMap,
+  employees: EmpRec[]
+): Promise<void> {
+  // Fetch all entries for this month
+  const allEntries = await db
+    .select()
+    .from(planningEntriesTable)
+    .where(eq(planningEntriesTable.planningMonthId, planningMonthId));
+
+  // Build used-desk pool per week per office from all entries that already have a desk
+  const usedByWeekByOffice: Record<string, Record<number, Set<string>>> = {};
+  for (const e of allEntries) {
+    if (!e.deskCode) continue;
+    const wk = weekStartKey(e.date);
+    for (const o of offices) {
+      if (o.deskCodes.includes(e.deskCode)) {
+        (usedByWeekByOffice[wk] ??= {})[o.id] ??= new Set();
+        usedByWeekByOffice[wk][o.id].add(e.deskCode);
+        break;
+      }
+    }
+  }
+
+  const empMap = new Map(employees.map((e) => [e.id, e]));
+
+  // Find locked entries with an onsite shift but no desk
+  const needDesk = allEntries
+    .filter((e) => e.isLocked && !e.deskCode && e.shiftCode && shiftCodes[e.shiftCode]?.type === "onsite")
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  for (const entry of needDesk) {
+    const emp = empMap.get(entry.employeeId);
+    if (!emp) continue;
+
+    const wk = weekStartKey(entry.date);
+    const empOffices = offices.filter((o) => o.employeeIds.includes(emp.id));
+    const ordered = emp.preferredOfficeId
+      ? [
+          ...empOffices.filter((o) => o.id === emp.preferredOfficeId),
+          ...empOffices.filter((o) => o.id !== emp.preferredOfficeId),
+        ]
+      : empOffices;
+
+    let assigned: string | null = null;
+    for (const o of ordered) {
+      const used = (usedByWeekByOffice[wk] ??= {})[o.id] ??= new Set();
+      const available = o.deskCodes.filter((dc) => !used.has(dc));
+      if (available.length === 0) continue;
+
+      const ha = o.heightAdjustableDesks ?? [];
+      let pool = available;
+      if (emp.prefersHeightAdjustableDesk) {
+        const haAvail = available.filter((dc) => ha.includes(dc));
+        if (haAvail.length > 0) pool = haAvail;
+      } else {
+        const nonHa = available.filter((dc) => !ha.includes(dc));
+        if (nonHa.length > 0) pool = nonHa;
+      }
+      assigned = pool[Math.floor(Math.random() * pool.length)];
+      used.add(assigned);
+      break;
+    }
+
+    if (!assigned) continue;
+
+    await db
+      .update(planningEntriesTable)
+      .set({ deskCode: assigned })
+      .where(eq(planningEntriesTable.id, entry.id));
+  }
+}
+
 async function buildMonthResponse(year: number, month: number) {
   const pm = await getOrCreateMonth(year, month);
   const entries = await db
@@ -436,6 +530,10 @@ router.post("/planning/:year/:month/generate", async (req, res): Promise<void> =
       }))
     );
   }
+
+  // Assign desks to locked entries that have a shift code but no desk code
+  // (e.g. imported via Excel where only the shift row was filled in)
+  await assignDesksToLockedNoDeskEntries(pm.id, officesWithEmps, shiftCodes, employees);
 
   // Persist violations so the GET endpoint and dashboard can show them
   await db
