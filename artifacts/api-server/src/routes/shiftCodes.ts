@@ -28,6 +28,7 @@ router.post("/shift-codes", async (req, res): Promise<void> => {
     type: parsed.data.type,
     isActive: parsed.data.isActive ?? true,
     color: parsed.data.color ?? null,
+    scalesWithContract: parsed.data.scalesWithContract ?? false,
   }).returning();
   res.status(201).json(row);
 });
@@ -49,6 +50,7 @@ router.put("/shift-codes/:code", async (req, res): Promise<void> => {
   if (parsed.data.type !== undefined) updateData.type = parsed.data.type;
   if (parsed.data.isActive !== undefined) updateData.isActive = parsed.data.isActive;
   if ("color" in parsed.data) updateData.color = parsed.data.color ?? null;
+  if (parsed.data.scalesWithContract !== undefined) updateData.scalesWithContract = parsed.data.scalesWithContract;
 
   const [row] = await db
     .update(shiftCodesTable)

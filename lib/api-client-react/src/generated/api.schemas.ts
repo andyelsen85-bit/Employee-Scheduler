@@ -184,6 +184,8 @@ export interface ShiftCode {
   isActive: boolean;
   /** Custom hex color for this shift code in the planning view (overrides type default) */
   color?: string | null;
+  /** When true, hours are multiplied by the employee's contract percentage */
+  scalesWithContract?: boolean;
 }
 
 export interface CreateShiftCodeBody {
@@ -193,6 +195,7 @@ export interface CreateShiftCodeBody {
   type: string;
   isActive?: boolean;
   color?: string | null;
+  scalesWithContract?: boolean;
 }
 
 export interface UpdateShiftCodeBody {
@@ -201,6 +204,7 @@ export interface UpdateShiftCodeBody {
   type?: string;
   isActive?: boolean;
   color?: string | null;
+  scalesWithContract?: boolean;
 }
 
 export interface TemplateDayEntry {

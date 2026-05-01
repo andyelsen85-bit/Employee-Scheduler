@@ -279,8 +279,8 @@ export default function Planning() {
     end: endOfMonth(date)
   });
 
-  const shiftHoursMap = new Map<string, number>(
-    (shiftCodes ?? []).map(sc => [sc.code, sc.hours])
+  const shiftCodesInfoMap = new Map<string, { hours: number; scalesWithContract?: boolean }>(
+    (shiftCodes ?? []).map(sc => [sc.code, { hours: sc.hours, scalesWithContract: sc.scalesWithContract ?? false }])
   );
 
   const officialHours = monthlyConfig?.contractualHours ?? null;
@@ -292,12 +292,19 @@ export default function Planning() {
 
   function getEmployeePlannedHours(empId: number): number {
     if (!planning) return 0;
+    const emp = employees?.find(e => e.id === empId);
+    const contractPct = emp?.contractPercent ?? 100;
     // Include ALL entries visible in this month's grid (current plan + previous month's
     // overflow entries shown at the start of the month). The planner already accounts for
     // those overflow hours when computing JL days, so the total correctly tracks against target.
     return planning.entries
       .filter(e => e.employeeId === empId && e.shiftCode && e.date.startsWith(currentMonthPrefix))
-      .reduce((sum, e) => sum + (shiftHoursMap.get(e.shiftCode!) ?? 0), 0);
+      .reduce((sum, e) => {
+        const info = shiftCodesInfoMap.get(e.shiftCode!);
+        if (!info) return sum;
+        const h = info.scalesWithContract && contractPct !== 100 ? info.hours * (contractPct / 100) : info.hours;
+        return sum + h;
+      }, 0);
   }
 
   const lockedCount = planning ? planning.entries.filter(e => e.isLocked && e.date.startsWith(currentMonthPrefix)).length : 0;

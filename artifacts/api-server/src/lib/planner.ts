@@ -4,6 +4,7 @@ export type ShiftCodeRecord = {
   code: string;
   hours: number;
   type: string;
+  scalesWithContract?: boolean;
 };
 
 export type DayCodePreference = { day: number; code: string };
@@ -135,9 +136,25 @@ function bestCodeByTarget(
   return candidates[0].code;
 }
 
-function hoursForCode(code: string | null, shiftCodes: Record<string, ShiftCodeRecord>): number {
+/**
+ * Returns the effective hours for a shift code.
+ * If the code has `scalesWithContract = true` and a contractPct is supplied,
+ * the base hours are multiplied by (contractPct / 100).
+ * contractPct should be 0–100 (e.g. 80 for an 80% employee).
+ */
+function hoursForCode(
+  code: string | null,
+  shiftCodes: Record<string, ShiftCodeRecord>,
+  contractPct?: number
+): number {
   if (!code) return 0;
-  return shiftCodes[code]?.hours ?? 0;
+  const sc = shiftCodes[code];
+  if (!sc) return 0;
+  const base = sc.hours;
+  if (sc.scalesWithContract && contractPct !== undefined && contractPct !== 100) {
+    return base * (contractPct / 100);
+  }
+  return base;
 }
 
 
@@ -888,7 +905,7 @@ export function generatePlanning(params: {
         const locked = lockedEntries.find((e) => e.employeeId === emp.id && e.date === dateStr);
         const isLockedOverflow = overflowWorkingDaySet.has(dateStr);
         if (locked?.shiftCode) {
-          const h = hoursForCode(locked.shiftCode, shiftCodes);
+          const h = hoursForCode(locked.shiftCode, shiftCodes, emp.contractPercent);
           plannedHoursByEmployee[emp.id] = (plannedHoursByEmployee[emp.id] ?? 0) + h;
           if (!isLockedOverflow) remainingHours[emp.id] = (remainingHours[emp.id] ?? 0) - h;
           const lockedType = shiftCodes[locked.shiftCode]?.type;
@@ -910,7 +927,7 @@ export function generatePlanning(params: {
 
       // Requested day off → C0
       if ((requestedOffMap[emp.id] ?? new Set()).has(dateStr)) {
-        const holidayHours = hoursForCode("C0", shiftCodes);
+        const holidayHours = hoursForCode("C0", shiftCodes, emp.contractPercent);
         entries.push({
           employeeId: emp.id,
           date: dateStr,
@@ -1179,7 +1196,7 @@ export function generatePlanning(params: {
         }
       }
 
-      const assignedHours = hoursForCode(chosenCode, shiftCodes);
+      const assignedHours = hoursForCode(chosenCode, shiftCodes, emp.contractPercent);
 
       const chosenType = chosenCode ? shiftCodes[chosenCode]?.type : undefined;
       if (chosenType === "onsite") {
@@ -1291,8 +1308,8 @@ export function generatePlanning(params: {
       if (!promotedDesk) continue; // No desk available today — leave as homework
 
       // Upgrade entry to onsite with the daily desk
-      const oldHours = hoursForCode(entry.shiftCode, shiftCodes);
-      const newHours = hoursForCode(onsiteCode, shiftCodes);
+      const oldHours = hoursForCode(entry.shiftCode, shiftCodes, emp.contractPercent);
+      const newHours = hoursForCode(onsiteCode, shiftCodes, emp.contractPercent);
       entry.shiftCode = onsiteCode;
       entry.deskCode = promotedDesk;
       onsiteCountByEmployee[emp.id] = (onsiteCountByEmployee[emp.id] ?? 0) + 1;
@@ -1324,7 +1341,7 @@ export function generatePlanning(params: {
     let plannedThisMonth = 0;
     for (const e of [...entries, ...lockedEntries]) {
       if (e.employeeId !== emp.id || !e.date.startsWith(monthPrefix)) continue;
-      plannedThisMonth += hoursForCode(e.shiftCode, shiftCodes);
+      plannedThisMonth += hoursForCode(e.shiftCode, shiftCodes, emp.contractPercent);
     }
 
     const overshoot = plannedThisMonth - target;
@@ -1352,7 +1369,7 @@ export function generatePlanning(params: {
     let remaining = overshoot;
     for (const entry of ordered) {
       if (remaining <= HOUR_OVERSHOOT_TOLERANCE) break;
-      const entryHours = hoursForCode(entry.shiftCode, shiftCodes);
+      const entryHours = hoursForCode(entry.shiftCode, shiftCodes, emp.contractPercent);
       const idx = entries.indexOf(entry);
       if (idx === -1) continue;
 

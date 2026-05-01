@@ -21,12 +21,20 @@ import { Plus, Pencil, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 
-const DEFAULT_FORM = { code: "", label: "", hours: 8, type: "onsite", isActive: true, color: "" };
+const DEFAULT_FORM = {
+  code: "",
+  label: "",
+  hours: 8,
+  type: "onsite",
+  isActive: true,
+  color: "",
+  scalesWithContract: false,
+};
 
 export default function ShiftCodesConfig() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [dialog, setDialog] = useState<null | "create" | { code: string; label: string; hours: number; type: string; isActive: boolean; color?: string | null }>(null);
+  const [dialog, setDialog] = useState<null | "create" | { code: string; label: string; hours: number; type: string; isActive: boolean; color?: string | null; scalesWithContract?: boolean }>(null);
   const [form, setForm] = useState(DEFAULT_FORM);
 
   const { data: shiftCodes, isLoading } = useListShiftCodes({
@@ -41,17 +49,35 @@ export default function ShiftCodesConfig() {
     setDialog("create");
   };
 
-  type ShiftCode = { code: string; label: string; hours: number; type: string; isActive: boolean; color?: string | null };
+  type ShiftCode = { code: string; label: string; hours: number; type: string; isActive: boolean; color?: string | null; scalesWithContract?: boolean };
 
   const openEdit = (sc: ShiftCode) => {
-    setForm({ code: sc.code, label: sc.label, hours: sc.hours, type: sc.type, isActive: sc.isActive, color: sc.color ?? "" });
+    setForm({
+      code: sc.code,
+      label: sc.label,
+      hours: sc.hours,
+      type: sc.type,
+      isActive: sc.isActive,
+      color: sc.color ?? "",
+      scalesWithContract: sc.scalesWithContract ?? false,
+    });
     setDialog(sc);
   };
 
   const handleSave = () => {
     if (dialog === "create") {
       createShiftCode.mutate(
-        { data: { code: form.code, label: form.label, hours: form.hours, type: form.type, isActive: form.isActive, color: form.color || null } },
+        {
+          data: {
+            code: form.code,
+            label: form.label,
+            hours: form.hours,
+            type: form.type,
+            isActive: form.isActive,
+            color: form.color || null,
+            scalesWithContract: form.scalesWithContract,
+          },
+        },
         {
           onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: getListShiftCodesQueryKey() });
@@ -62,7 +88,17 @@ export default function ShiftCodesConfig() {
       );
     } else if (dialog) {
       updateShiftCode.mutate(
-        { code: (dialog as { code: string }).code, data: { label: form.label, hours: form.hours, type: form.type, isActive: form.isActive, color: form.color || null } },
+        {
+          code: (dialog as { code: string }).code,
+          data: {
+            label: form.label,
+            hours: form.hours,
+            type: form.type,
+            isActive: form.isActive,
+            color: form.color || null,
+            scalesWithContract: form.scalesWithContract,
+          },
+        },
         {
           onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: getListShiftCodesQueryKey() });
@@ -86,15 +122,6 @@ export default function ShiftCodesConfig() {
       }
     );
   };
-
-  const groupedCodes = shiftCodes?.reduce(
-    (acc, sc) => {
-      if (!acc[sc.type]) acc[sc.type] = [];
-      acc[sc.type].push(sc);
-      return acc;
-    },
-    {} as Record<string, typeof shiftCodes>
-  );
 
   return (
     <Layout>
@@ -141,13 +168,28 @@ export default function ShiftCodesConfig() {
                         <span className="font-mono font-semibold">{sc.code}</span>
                       </div>
                     </TableCell>
-                    <TableCell>{sc.label}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        {sc.label}
+                        {sc.scalesWithContract && (
+                          <Badge variant="outline" className="text-xs text-blue-600 border-blue-300">
+                            Scales with contract
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell>
                       <Badge variant="outline" className="capitalize">
                         {sc.type}
                       </Badge>
                     </TableCell>
-                    <TableCell>{sc.hours}h</TableCell>
+                    <TableCell>
+                      {sc.scalesWithContract ? (
+                        <span className="text-muted-foreground text-sm">{sc.hours}h × contract%</span>
+                      ) : (
+                        `${sc.hours}h`
+                      )}
+                    </TableCell>
                     <TableCell>
                       <Badge variant={sc.isActive ? "default" : "secondary"}>
                         {sc.isActive ? "Active" : "Inactive"}
@@ -205,7 +247,7 @@ export default function ShiftCodesConfig() {
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Hours</Label>
+                  <Label>Hours (base / full-time)</Label>
                   <Input
                     type="number"
                     step="0.1"
@@ -214,6 +256,18 @@ export default function ShiftCodesConfig() {
                     onChange={(e) => setForm({ ...form, hours: parseFloat(e.target.value) })}
                   />
                 </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Scales with contract %</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Hours are multiplied by the employee's contract percentage (e.g. C0 holiday = 7.6h × 80% for an 80% employee)
+                  </p>
+                </div>
+                <Switch
+                  checked={form.scalesWithContract}
+                  onCheckedChange={(v) => setForm({ ...form, scalesWithContract: v })}
+                />
               </div>
               <div className="flex items-center justify-between">
                 <Label>Active</Label>

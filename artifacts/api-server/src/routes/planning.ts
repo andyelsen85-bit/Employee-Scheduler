@@ -163,7 +163,7 @@ function weekStartKey(dateStr: string): string {
 }
 
 type OfficeRec = { id: number; deskCodes: string[]; heightAdjustableDesks: string[]; employeeIds: number[] };
-type ShiftCodeMap = Record<string, { code: string; hours: number; type: string }>;
+type ShiftCodeMap = Record<string, { code: string; hours: number; type: string; scalesWithContract?: boolean }>;
 type EmpRec = { id: number; preferredOfficeId: number | null; prefersHeightAdjustableDesk: boolean };
 
 /**
@@ -798,7 +798,7 @@ router.post("/planning/:year/:month/confirm", async (req, res): Promise<void> =>
       .from(planningEntriesTable)
       .where(eq(planningEntriesTable.planningMonthId, pm.id));
     const shiftCodeRows = await db.select().from(shiftCodesTable);
-    const shiftHoursMap = new Map(shiftCodeRows.map((sc) => [sc.code, sc.hours]));
+    const shiftCodeMap = new Map(shiftCodeRows.map((sc) => [sc.code, sc]));
     const empRows = await db.select().from(employeesTable);
     const empContractPct: Record<number, number> = {};
     for (const e of empRows) empContractPct[e.id] = e.contractPercent ?? 100;
@@ -806,7 +806,10 @@ router.post("/planning/:year/:month/confirm", async (req, res): Promise<void> =>
     const plannedByEmployee: Record<number, number> = {};
     for (const entry of entries) {
       if (!entry.shiftCode) continue;
-      const hours = shiftHoursMap.get(entry.shiftCode) ?? 0;
+      const sc = shiftCodeMap.get(entry.shiftCode);
+      if (!sc) continue;
+      const pct = empContractPct[entry.employeeId] ?? 100;
+      const hours = sc.scalesWithContract && pct !== 100 ? sc.hours * (pct / 100) : sc.hours;
       plannedByEmployee[entry.employeeId] = (plannedByEmployee[entry.employeeId] ?? 0) + hours;
     }
 

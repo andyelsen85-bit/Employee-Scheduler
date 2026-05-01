@@ -567,6 +567,7 @@ export const ListShiftCodesResponseItem = zod.object({
     .describe(
       "Custom hex color for this shift code in the planning view (overrides type default)",
     ),
+  scalesWithContract: zod.boolean().optional(),
 });
 export const ListShiftCodesResponse = zod.array(ListShiftCodesResponseItem);
 
@@ -577,6 +578,7 @@ export const CreateShiftCodeBody = zod.object({
   type: zod.string(),
   isActive: zod.boolean().optional(),
   color: zod.string().nullish(),
+  scalesWithContract: zod.boolean().optional(),
 });
 
 export const UpdateShiftCodeParams = zod.object({
@@ -589,6 +591,7 @@ export const UpdateShiftCodeBody = zod.object({
   type: zod.string().optional(),
   isActive: zod.boolean().optional(),
   color: zod.string().nullish(),
+  scalesWithContract: zod.boolean().optional(),
 });
 
 export const UpdateShiftCodeResponse = zod.object({
@@ -605,6 +608,7 @@ export const UpdateShiftCodeResponse = zod.object({
     .describe(
       "Custom hex color for this shift code in the planning view (overrides type default)",
     ),
+  scalesWithContract: zod.boolean().optional(),
 });
 
 export const DeleteShiftCodeParams = zod.object({
