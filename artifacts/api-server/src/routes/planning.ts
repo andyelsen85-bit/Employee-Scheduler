@@ -168,8 +168,16 @@ type EmpRec = { id: number; preferredOfficeId: number | null; prefersHeightAdjus
 
 /**
  * After generation, assign desks to locked planning entries that have an onsite
- * shift code but no desk code (common when imported from Excel with only the shift
- * row filled in). Uses a weekly desk pool to avoid collisions.
+ * shift code but no desk code (common when imported from Excel with only the
+ * shift row filled in).
+ *
+ * Strategy: same desk per employee per week, mirroring the main planner.
+ *   – If the employee already received a desk for that ISO week (tracked in
+ *     weeklyDeskByEmp), reuse it immediately.
+ *   – Otherwise build a "used this week" set from:
+ *       1. The initial snapshot (allEntries) filtered to the Mon–Fri window.
+ *       2. Desks already assigned during this loop (weeklyDeskByEmp values).
+ *     Then pick a free desk from the employee's offices.
  */
 async function assignDesksToLockedNoDeskEntries(
   planningMonthId: number,
@@ -177,38 +185,57 @@ async function assignDesksToLockedNoDeskEntries(
   shiftCodes: ShiftCodeMap,
   employees: EmpRec[]
 ): Promise<void> {
-  // Fetch all entries for this month
   const allEntries = await db
     .select()
     .from(planningEntriesTable)
     .where(eq(planningEntriesTable.planningMonthId, planningMonthId));
 
-  // Build used-desk pool per week per office from all entries that already have a desk
-  const usedByWeekByOffice: Record<string, Record<number, Set<string>>> = {};
-  for (const e of allEntries) {
-    if (!e.deskCode) continue;
-    const wk = weekStartKey(e.date);
-    for (const o of offices) {
-      if (o.deskCodes.includes(e.deskCode)) {
-        (usedByWeekByOffice[wk] ??= {})[o.id] ??= new Set();
-        usedByWeekByOffice[wk][o.id].add(e.deskCode);
-        break;
-      }
-    }
-  }
-
   const empMap = new Map(employees.map((e) => [e.id, e]));
 
-  // Find locked entries with an onsite shift but no desk
   const needDesk = allEntries
     .filter((e) => e.isLocked && !e.deskCode && e.shiftCode && shiftCodes[e.shiftCode]?.type === "onsite")
     .sort((a, b) => a.date.localeCompare(b.date));
+
+  if (needDesk.length === 0) return;
+
+  // empId → weekKey → desk code assigned in this loop
+  const weeklyDeskByEmp: Record<number, Record<string, string>> = {};
 
   for (const entry of needDesk) {
     const emp = empMap.get(entry.employeeId);
     if (!emp) continue;
 
     const wk = weekStartKey(entry.date);
+
+    // Same employee, same week → reuse the desk decided earlier
+    const alreadyThisWeek = weeklyDeskByEmp[emp.id]?.[wk];
+    if (alreadyThisWeek) {
+      await db
+        .update(planningEntriesTable)
+        .set({ deskCode: alreadyThisWeek })
+        .where(eq(planningEntriesTable.id, entry.id));
+      continue;
+    }
+
+    // Build used-desk set for this specific Mon–Fri window
+    const wkEnd = (() => {
+      const d = new Date(wk + "T12:00:00Z");
+      d.setUTCDate(d.getUTCDate() + 4); // Friday
+      return d.toISOString().slice(0, 10);
+    })();
+
+    const usedInWeek = new Set<string>();
+
+    // 1. Desks from the initial snapshot that fall in this week
+    for (const r of allEntries) {
+      if (r.deskCode && r.date >= wk && r.date <= wkEnd) usedInWeek.add(r.deskCode);
+    }
+    // 2. Desks assigned by earlier iterations of this loop for the same week
+    for (const weeks of Object.values(weeklyDeskByEmp)) {
+      const d = weeks[wk];
+      if (d) usedInWeek.add(d);
+    }
+
     const empOffices = offices.filter((o) => o.employeeIds.includes(emp.id));
     const ordered = emp.preferredOfficeId
       ? [
@@ -219,10 +246,8 @@ async function assignDesksToLockedNoDeskEntries(
 
     let assigned: string | null = null;
     for (const o of ordered) {
-      const used = (usedByWeekByOffice[wk] ??= {})[o.id] ??= new Set();
-      const available = o.deskCodes.filter((dc) => !used.has(dc));
+      const available = o.deskCodes.filter((dc) => !usedInWeek.has(dc));
       if (available.length === 0) continue;
-
       const ha = o.heightAdjustableDesks ?? [];
       let pool = available;
       if (emp.prefersHeightAdjustableDesk) {
@@ -233,11 +258,12 @@ async function assignDesksToLockedNoDeskEntries(
         if (nonHa.length > 0) pool = nonHa;
       }
       assigned = pool[Math.floor(Math.random() * pool.length)];
-      used.add(assigned);
       break;
     }
 
     if (!assigned) continue;
+
+    (weeklyDeskByEmp[emp.id] ??= {})[wk] = assigned;
 
     await db
       .update(planningEntriesTable)
