@@ -229,6 +229,21 @@ export default function Planning() {
     }
   };
 
+  const handleClearUnlocked = async () => {
+    if (!confirm("Clear all unlocked (auto-generated) entries for this month? Locked entries will be kept.")) return;
+    setIsClearing(true);
+    try {
+      const res = await fetch(`/api/planning/${year}/${month}?keepLocked=true`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to clear unlocked planning entries");
+      queryClient.invalidateQueries({ queryKey: getGetMonthPlanningQueryKey(year, month) });
+      toast({ title: "Unlocked entries cleared", description: "Locked entries were preserved." });
+    } catch {
+      toast({ title: "Error clearing entries", variant: "destructive" });
+    } finally {
+      setIsClearing(false);
+    }
+  };
+
   const handleUpdateShift = (entryId: number, shiftCode: string, currentDeskCode?: string | null) => {
     const codeType = shiftTypeMap.get(shiftCode);
     const shouldClearDesk = !!currentDeskCode && codeType !== "onsite";
@@ -357,9 +372,15 @@ export default function Planning() {
               Confirm
             </Button>
             {planning && (
+              <Button variant="outline" size="sm" onClick={handleClearUnlocked} disabled={isClearing} className="text-orange-700 border-orange-400 hover:bg-orange-50">
+                <Trash2 className="h-4 w-4 mr-2" />
+                Clear unlocked
+              </Button>
+            )}
+            {planning && (
               <Button variant="outline" size="sm" onClick={handleClear} disabled={isClearing} className="text-destructive border-destructive/40 hover:bg-destructive/10">
                 <Trash2 className="h-4 w-4 mr-2" />
-                Clear
+                Clear all
               </Button>
             )}
           </div>

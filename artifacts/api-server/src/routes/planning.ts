@@ -961,6 +961,7 @@ router.put("/planning/entries/:id", async (req, res): Promise<void> => {
 });
 
 // DELETE /api/planning/:year/:month — clear planning back to draft
+// ?keepLocked=true  → delete only unlocked entries (preserves locked/imported entries)
 router.delete("/planning/:year/:month", async (req, res): Promise<void> => {
   const year = parseInt(req.params.year, 10);
   const month = parseInt(req.params.month, 10);
@@ -968,6 +969,7 @@ router.delete("/planning/:year/:month", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Invalid year/month" });
     return;
   }
+  const keepLocked = req.query.keepLocked === "true";
   const [pm] = await db
     .select()
     .from(planningMonthsTable)
@@ -976,13 +978,19 @@ router.delete("/planning/:year/:month", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Planning not found" });
     return;
   }
-  await db.delete(planningEntriesTable).where(eq(planningEntriesTable.planningMonthId, pm.id));
+  if (keepLocked) {
+    await db
+      .delete(planningEntriesTable)
+      .where(and(eq(planningEntriesTable.planningMonthId, pm.id), eq(planningEntriesTable.isLocked, false)));
+  } else {
+    await db.delete(planningEntriesTable).where(eq(planningEntriesTable.planningMonthId, pm.id));
+  }
   const [updated] = await db
     .update(planningMonthsTable)
     .set({ status: "draft", generatedAt: null, confirmedAt: null, violations: null })
     .where(eq(planningMonthsTable.id, pm.id))
     .returning();
-  res.json({ cleared: true, status: updated?.status ?? "draft" });
+  res.json({ cleared: true, keepLocked, status: updated?.status ?? "draft" });
 });
 
 export default router;
