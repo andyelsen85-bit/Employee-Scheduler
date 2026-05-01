@@ -33,15 +33,12 @@ function workingDatesForMonth(year: number, month: number): string[] {
   return dates;
 }
 
-/** Build one worksheet for a given month. */
-async function buildSheet(
-  year: number,
-  month: number,
+/** Build one worksheet for an arbitrary ordered list of working dates. */
+function buildSheet(
+  dates: string[],
   employees: { id: number; name: string; displayOrder: number }[],
   entriesByEmpDate: Map<string, { shiftCode: string | null; deskCode: string | null }>
-): Promise<XLSX.WorkSheet> {
-  const dates = workingDatesForMonth(year, month);
-
+): XLSX.WorkSheet {
   const headerRow = ["Employee", ...dates];
   const rows: (string | null)[][] = [headerRow];
 
@@ -61,10 +58,7 @@ async function buildSheet(
   }
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
-
-  // Column widths: first col wider, date cols narrow
   ws["!cols"] = [{ wch: 20 }, ...dates.map(() => ({ wch: 10 }))];
-
   return ws;
 }
 
@@ -88,37 +82,57 @@ router.get("/planning/excel-export", async (req, res): Promise<void> => {
     .from(employeesTable)
     .orderBy(employeesTable.displayOrder, employeesTable.name);
 
-  const months = monthParam ? [monthParam] : Array.from({ length: 12 }, (_, i) => i + 1);
-
-  // Fetch all relevant planning entries in one query per month
   const wb = XLSX.utils.book_new();
 
-  for (const month of months) {
+  if (monthParam) {
+    // ── Single month: one sheet ───────────────────────────────────────────────
     const [pm] = await db
       .select()
       .from(planningMonthsTable)
-      .where(and(eq(planningMonthsTable.year, year), eq(planningMonthsTable.month, month)));
+      .where(and(eq(planningMonthsTable.year, year), eq(planningMonthsTable.month, monthParam)));
 
     const entriesByEmpDate = new Map<string, { shiftCode: string | null; deskCode: string | null }>();
-
     if (pm) {
       const entries = await db
         .select()
         .from(planningEntriesTable)
         .where(eq(planningEntriesTable.planningMonthId, pm.id));
-
       for (const e of entries) {
-        const key = `${e.employeeId}::${e.date}`;
-        entriesByEmpDate.set(key, { shiftCode: e.shiftCode ?? null, deskCode: e.deskCode ?? null });
+        entriesByEmpDate.set(`${e.employeeId}::${e.date}`, {
+          shiftCode: e.shiftCode ?? null,
+          deskCode: e.deskCode ?? null,
+        });
+      }
+    }
+    const dates = workingDatesForMonth(year, monthParam);
+    const sheetName = `${year}-${String(monthParam).padStart(2, "0")}`;
+    XLSX.utils.book_append_sheet(wb, buildSheet(dates, employees, entriesByEmpDate), sheetName);
+  } else {
+    // ── Full year: one single sheet with all working days Jan–Dec ─────────────
+    const allDates: string[] = [];
+    for (let m = 1; m <= 12; m++) allDates.push(...workingDatesForMonth(year, m));
+
+    const entriesByEmpDate = new Map<string, { shiftCode: string | null; deskCode: string | null }>();
+
+    const planningMonths = await db
+      .select()
+      .from(planningMonthsTable)
+      .where(eq(planningMonthsTable.year, year));
+
+    for (const pm of planningMonths) {
+      const entries = await db
+        .select()
+        .from(planningEntriesTable)
+        .where(eq(planningEntriesTable.planningMonthId, pm.id));
+      for (const e of entries) {
+        entriesByEmpDate.set(`${e.employeeId}::${e.date}`, {
+          shiftCode: e.shiftCode ?? null,
+          deskCode: e.deskCode ?? null,
+        });
       }
     }
 
-    const sheetName = monthParam
-      ? `${year}-${String(month).padStart(2, "0")}`
-      : new Date(year, month - 1, 1).toLocaleString("en", { month: "short" }) + ` ${year}`;
-
-    const ws = await buildSheet(year, month, employees, entriesByEmpDate);
-    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    XLSX.utils.book_append_sheet(wb, buildSheet(allDates, employees, entriesByEmpDate), `Planning ${year}`);
   }
 
   const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
