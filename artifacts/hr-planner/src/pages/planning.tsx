@@ -214,11 +214,17 @@ export default function Planning() {
     ? employees?.find(e => e.id === user.employeeId) ?? null
     : null;
 
+  const myDepartmentGroups = !isAdmin && myEmployee && allEmployeeGroups
+    ? allEmployeeGroups.filter(g => g.emps.some(e => e.id === myEmployee.id))
+    : null;
+
   const employeeGroups = isAdmin
     ? allEmployeeGroups
-    : myEmployee
-      ? [{ label: null, emps: [myEmployee] }]
-      : [];
+    : myDepartmentGroups && myDepartmentGroups.length > 0
+      ? myDepartmentGroups
+      : myEmployee
+        ? [{ label: null, emps: [myEmployee] }]
+        : [];
 
   const SHIFT_TYPE_STYLE: Record<string, { bg: string; text: string; border: string }> = {
     onsite:   { bg: "rgba(59,130,246,0.12)",  text: "#1d4ed8", border: "rgba(59,130,246,0.25)" },
