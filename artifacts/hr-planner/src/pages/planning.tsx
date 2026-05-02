@@ -157,29 +157,29 @@ export default function Planning() {
       });
 
       const imgData = canvas.toDataURL("image/png");
-      const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a3" });
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a3" });
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
-      const margin = 8;
-      const titleBlockHeight = 12;
+      const margin = 6;
+      const titleBlockHeight = 10;
 
       // Title (month + year) at the top of the page
       pdf.setFont("helvetica", "bold");
       pdf.setFontSize(16);
-      pdf.text(`Planning — ${monthLabel}`, margin, margin + 7);
+      pdf.text(`Planning — ${monthLabel}`, margin, margin + 6);
 
-      // Fit the captured grid into the remaining space
+      // Zoom-to-fill: scale uniformly so the grid fills the page (no white
+      // bands), preserving aspect ratio. Whichever dimension hits the edge
+      // first (usually width on a portrait A3) determines the scale.
       const availableWidth = pageWidth - margin * 2;
       const availableHeight = pageHeight - margin * 2 - titleBlockHeight;
       const ratio = Math.min(availableWidth / canvas.width, availableHeight / canvas.height);
-      pdf.addImage(
-        imgData,
-        "PNG",
-        margin,
-        margin + titleBlockHeight,
-        canvas.width * ratio,
-        canvas.height * ratio,
-      );
+      const imgW = canvas.width * ratio;
+      const imgH = canvas.height * ratio;
+      // Center the image horizontally / vertically inside the available area.
+      const offsetX = margin + (availableWidth - imgW) / 2;
+      const offsetY = margin + titleBlockHeight + (availableHeight - imgH) / 2;
+      pdf.addImage(imgData, "PNG", offsetX, offsetY, imgW, imgH);
       pdf.save(`planning-${year}-${String(month).padStart(2, "0")}.pdf`);
     } catch (err) {
       console.error("PDF export failed:", err);
