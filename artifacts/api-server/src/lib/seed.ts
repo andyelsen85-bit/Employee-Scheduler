@@ -1,6 +1,26 @@
+import { execSync } from "child_process";
 import { db, usersTable, pool } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger.js";
+
+/**
+ * Push the Drizzle schema to the database (creates all tables on a fresh DB).
+ * Uses --force to skip interactive prompts. Safe to run on an existing DB too —
+ * it is idempotent when the schema already matches.
+ */
+export async function ensureSchema(): Promise<void> {
+  try {
+    logger.info("Pushing DB schema (drizzle-kit push --force)…");
+    execSync("pnpm --filter @workspace/db run push-force", {
+      cwd: process.cwd(),
+      env: process.env,
+      stdio: "pipe",
+    });
+    logger.info("DB schema up to date");
+  } catch (err) {
+    logger.error({ err }, "Failed to push DB schema — tables may be missing");
+  }
+}
 
 export async function ensureUserSessionsTable(): Promise<void> {
   try {
