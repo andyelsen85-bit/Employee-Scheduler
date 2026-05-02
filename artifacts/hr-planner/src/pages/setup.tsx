@@ -3,9 +3,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import type { AuthUser } from "@/hooks/use-auth";
 
 interface SetupProps {
-  onComplete: () => void;
+  onComplete: (user: AuthUser) => void;
 }
 
 export default function Setup({ onComplete }: SetupProps) {
@@ -35,11 +36,16 @@ export default function Setup({ onComplete }: SetupProps) {
         credentials: "include",
         body: JSON.stringify({ password }),
       });
-      const data = await res.json() as { error?: string };
+      const data = await res.json() as AuthUser & { error?: string };
       if (!res.ok) {
         setError(data.error ?? "Failed to set password.");
       } else {
-        onComplete();
+        onComplete({
+          id: data.id,
+          username: data.username,
+          role: data.role,
+          employeeId: data.employeeId,
+        });
       }
     } catch {
       setError("Network error. Please try again.");

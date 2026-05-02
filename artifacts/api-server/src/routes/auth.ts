@@ -39,7 +39,20 @@ router.post("/auth/setup", async (req, res): Promise<void> => {
     .set({ passwordHash: hash, isLegacy: false })
     .where(eq(usersTable.id, admin.id));
 
-  res.json({ message: "Admin password set successfully" });
+  req.session.userId = admin.id;
+  req.session.role = admin.role;
+  req.session.save((err) => {
+    if (err) {
+      res.status(500).json({ error: "Password set, but failed to start session. Please log in." });
+      return;
+    }
+    res.json({
+      id: admin.id,
+      username: admin.username,
+      role: admin.role,
+      employeeId: admin.employeeId,
+    });
+  });
 });
 
 router.post("/auth/login", async (req, res): Promise<void> => {

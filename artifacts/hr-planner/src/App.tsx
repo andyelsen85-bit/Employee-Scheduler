@@ -86,7 +86,10 @@ function AppInner() {
   if (needsSetup) {
     return (
       <Setup
-        onComplete={() => setNeedsSetup(false)}
+        onComplete={(u) => {
+          setUser(u);
+          setNeedsSetup(false);
+        }}
       />
     );
   }
