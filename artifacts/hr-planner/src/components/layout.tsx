@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 
 const ALL_NAV = [
-  { name: "Dashboard", href: "/", icon: Home, adminOnly: true },
+  { name: "Dashboard", href: "/dashboard", icon: Home, adminOnly: true },
   { name: "Planning", href: "/planning", icon: Calendar, adminOnly: false },
   { name: "Permanence", href: `/permanence/${new Date().getFullYear()}`, icon: Shield, adminOnly: true },
   { name: "SPOC Rotation", href: `/spoc-rotation/${new Date().getFullYear()}`, icon: UserCheck, adminOnly: true },

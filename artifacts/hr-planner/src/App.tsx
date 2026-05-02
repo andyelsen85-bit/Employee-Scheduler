@@ -29,7 +29,7 @@ const queryClient = new QueryClient();
 function AdminRoutes() {
   return (
     <>
-      <Route path="/" component={Dashboard} />
+      <Route path="/dashboard" component={Dashboard} />
       <Route path="/employees" component={Employees} />
       <Route path="/employees/:id" component={EmployeeDetail} />
       <Route path="/config/offices" component={OfficesConfig} />
@@ -60,13 +60,13 @@ function Router() {
         }}
       </Route>
       <Route path="/planning/:year/:month" component={Planning} />
-      {isAdmin && <AdminRoutes />}
-      {!isAdmin && <Route path="/">
+      <Route path="/">
         {() => {
           const date = new Date();
           return <Redirect to={`/planning/${date.getFullYear()}/${date.getMonth() + 1}`} />;
         }}
-      </Route>}
+      </Route>
+      {isAdmin && <AdminRoutes />}
       <Route component={NotFound} />
     </Switch>
   );
