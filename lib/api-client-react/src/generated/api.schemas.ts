@@ -425,6 +425,11 @@ export interface PlanningEntry {
   isFromPrevMonth: boolean;
 }
 
+export type MonthPlanningNegativeBalanceEmployeesItem = {
+  employeeId: number;
+  name: string;
+};
+
 export interface PlanningViolation {
   date: string;
   /** missing_spoc | missing_management | missing_perma1 | missing_perma2 | desk_overflow | prm_exceeded | homework_limit | insufficient_onsite | role_gap */
@@ -441,6 +446,8 @@ export interface MonthPlanning {
   entries: PlanningEntry[];
   violations: PlanningViolation[];
   generatedAt?: string | null;
+  /** Populated after confirmation — employees whose holiday balance went negative */
+  negativeBalanceEmployees?: MonthPlanningNegativeBalanceEmployeesItem[] | null;
 }
 
 export interface RequestedDayOff {
@@ -487,6 +494,8 @@ export interface EmployeeStatSummary {
   plannedCoworkDays: number;
   plannedHolidayDays: number;
   totalPlannedHours: number;
+  /** True if C0 or any other holiday code balance is negative */
+  hasNegativeHolidayBalance: boolean;
 }
 
 export interface DailyOnsiteRate {
@@ -514,6 +523,8 @@ export interface DashboardSummary {
   permanenceSchedule: PermanenceWeek[];
   totalViolations: number;
   violations: DashboardSummaryViolationsItem[];
+  /** Number of employees with at least one negative holiday balance */
+  negativeHolidayBalanceCount: number;
 }
 
 export type ListHolidaysParams = {

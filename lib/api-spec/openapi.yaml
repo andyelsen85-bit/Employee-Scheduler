@@ -1864,6 +1864,18 @@ components:
           type: string
           format: date-time
           nullable: true
+        negativeBalanceEmployees:
+          type: array
+          nullable: true
+          description: "Populated after confirmation — employees whose holiday balance went negative"
+          items:
+            type: object
+            properties:
+              employeeId:
+                type: integer
+              name:
+                type: string
+            required: [employeeId, name]
       required: [year, month, status, entries, violations]
 
     PlanningViolation:
@@ -1976,6 +1988,9 @@ components:
               message:
                 type: string
             required: [type, message]
+        negativeHolidayBalanceCount:
+          type: integer
+          description: "Number of employees with at least one negative holiday balance"
       required:
         - year
         - month
@@ -1985,6 +2000,7 @@ components:
         - permanenceSchedule
         - totalViolations
         - violations
+        - negativeHolidayBalanceCount
 
     EmployeeStatSummary:
       type: object
@@ -2009,6 +2025,9 @@ components:
           type: integer
         totalPlannedHours:
           type: number
+        hasNegativeHolidayBalance:
+          type: boolean
+          description: "True if C0 or any other holiday code balance is negative"
       required:
         - employeeId
         - name
@@ -2020,6 +2039,7 @@ components:
         - plannedCoworkDays
         - plannedHolidayDays
         - totalPlannedHours
+        - hasNegativeHolidayBalance
 
     DailyOnsiteRate:
       type: object

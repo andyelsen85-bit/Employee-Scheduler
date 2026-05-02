@@ -360,9 +360,18 @@ export default function Planning() {
 
   const handleConfirm = () => {
     confirmPlanning.mutate({ year, month }, {
-      onSuccess: () => {
+      onSuccess: (data) => {
         queryClient.invalidateQueries({ queryKey: getGetMonthPlanningQueryKey(year, month) });
-        toast({ title: "Planning confirmed successfully" });
+        const affected = data?.negativeBalanceEmployees;
+        if (affected && affected.length > 0) {
+          toast({
+            title: "Planning confirmed — negative balances detected",
+            description: `${affected.map((e) => e.name).join(", ")} ${affected.length === 1 ? "has" : "have"} at least one holiday balance below zero.`,
+            variant: "destructive",
+          });
+        } else {
+          toast({ title: "Planning confirmed successfully" });
+        }
       }
     });
   };

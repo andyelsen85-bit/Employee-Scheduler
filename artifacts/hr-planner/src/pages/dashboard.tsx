@@ -3,7 +3,7 @@ import { useGetDashboardSummary, getGetDashboardSummaryQueryKey } from "@workspa
 import { useState } from "react";
 import { format, subMonths, addMonths } from "date-fns";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, AlertTriangle, Building, ShieldAlert, Shield } from "lucide-react";
+import { ChevronLeft, ChevronRight, AlertTriangle, Building, ShieldAlert, Shield, CalendarX } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -93,6 +93,22 @@ export default function Dashboard() {
                   <div className="text-2xl font-bold">{peakOnsite}</div>
                   <p className="text-xs text-muted-foreground mt-1">
                     Max employees on-site on any single day
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Negative Holiday Balances</CardTitle>
+                  <CalendarX className={`h-4 w-4 ${summary.negativeHolidayBalanceCount > 0 ? "text-destructive" : "text-muted-foreground"}`} />
+                </CardHeader>
+                <CardContent>
+                  <div className={`text-2xl font-bold ${summary.negativeHolidayBalanceCount > 0 ? "text-destructive" : ""}`}>
+                    {summary.negativeHolidayBalanceCount}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {summary.negativeHolidayBalanceCount === 0
+                      ? "All holiday balances are non-negative"
+                      : `${summary.negativeHolidayBalanceCount === 1 ? "Employee" : "Employees"} with at least one balance below zero`}
                   </p>
                 </CardContent>
               </Card>

@@ -18,7 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState } from "react";
-import { Plus, Search, Pencil, Trash2, User, ShieldCheck, Crown } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, User, ShieldCheck, Crown, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const COUNTRY_FLAGS: Record<string, string> = {
@@ -130,8 +130,15 @@ export default function Employees() {
               <Card key={emp.id} className="hover:bg-muted/20 transition-colors">
                 <CardContent className="flex items-center justify-between py-4 px-6">
                   <div className="flex items-center gap-4">
-                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center font-semibold text-primary text-sm">
-                      {emp.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
+                    <div className="relative h-10 w-10 shrink-0">
+                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center font-semibold text-primary text-sm">
+                        {emp.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
+                      </div>
+                      {(emp.holidayHoursRemaining < 0 || emp.holidayBalances.some((b) => b.balanceHours < 0)) && (
+                        <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-destructive-foreground">
+                          <AlertTriangle className="h-2.5 w-2.5" />
+                        </span>
+                      )}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">

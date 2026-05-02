@@ -904,7 +904,18 @@ router.post("/planning/:year/:month/confirm", requireAdmin, async (req, res): Pr
     }
   }
 
-  res.json(await buildMonthResponse(year, month));
+  // Detect employees whose holiday balance is now negative after this confirmation
+  const [empRowsAfter, negativeOtherBalancesAfter] = await Promise.all([
+    db.select({ id: employeesTable.id, name: employeesTable.name, holidayHoursRemaining: employeesTable.holidayHoursRemaining }).from(employeesTable),
+    db.select({ employeeId: employeeHolidayBalancesTable.employeeId }).from(employeeHolidayBalancesTable).where(sql`${employeeHolidayBalancesTable.balanceHours} < 0`),
+  ]);
+  const negativeOtherEmpIds = new Set(negativeOtherBalancesAfter.map((b) => b.employeeId));
+  const negativeBalanceEmployees = empRowsAfter
+    .filter((e) => e.holidayHoursRemaining < 0 || negativeOtherEmpIds.has(e.id))
+    .map((e) => ({ employeeId: e.id, name: e.name }));
+
+  const confirmResult = await buildMonthResponse(year, month);
+  res.json({ ...confirmResult, negativeBalanceEmployees: negativeBalanceEmployees.length > 0 ? negativeBalanceEmployees : null });
 });
 
 // POST /api/planning/:year/:month/entries — upsert a locked entry for an empty or generated month

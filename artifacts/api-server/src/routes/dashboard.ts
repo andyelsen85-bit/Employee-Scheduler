@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq, and, isNotNull } from "drizzle-orm";
+import { eq, and, isNotNull, lt } from "drizzle-orm";
 import {
   db,
   employeesTable,
@@ -8,6 +8,7 @@ import {
   planningEntriesTable,
   shiftCodesTable,
   permanenceOverridesTable,
+  employeeHolidayBalancesTable,
 } from "@workspace/db";
 import { GetDashboardSummaryQueryParams } from "@workspace/api-zod";
 
@@ -40,9 +41,12 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
   const year = qp.success && qp.data.year ? qp.data.year : now.getFullYear();
   const month = qp.success && qp.data.month ? qp.data.month : now.getMonth() + 1;
 
-  const employees = await db.select().from(employeesTable);
-  const offices = await db.select().from(officesTable);
-  const shiftCodes = await db.select().from(shiftCodesTable);
+  const [employees, offices, shiftCodes, negativeOtherBalances] = await Promise.all([
+    db.select().from(employeesTable),
+    db.select().from(officesTable),
+    db.select().from(shiftCodesTable),
+    db.select().from(employeeHolidayBalancesTable).where(lt(employeeHolidayBalancesTable.balanceHours, 0)),
+  ]);
 
   const scMap: Record<string, { hours: number; type: string }> = {};
   for (const sc of shiftCodes) scMap[sc.code] = { hours: sc.hours, type: sc.type };
@@ -58,6 +62,8 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
     ? await db.select().from(planningEntriesTable).where(eq(planningEntriesTable.planningMonthId, pm.id))
     : [];
 
+  const negativeOtherBalanceEmpIds = new Set(negativeOtherBalances.map((b) => b.employeeId));
+
   const employeeStats = employees.map((emp) => {
     const empEntries = entries.filter((e) => e.employeeId === emp.id);
     const onsiteEntries = empEntries.filter((e) => e.shiftCode && scMap[e.shiftCode]?.type === "onsite");
@@ -70,6 +76,8 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
       (sum, e) => sum + (e.shiftCode ? scMap[e.shiftCode]?.hours ?? 0 : 0),
       0
     );
+    const hasNegativeHolidayBalance =
+      emp.holidayHoursRemaining < 0 || negativeOtherBalanceEmpIds.has(emp.id);
     return {
       employeeId: emp.id,
       name: emp.name,
@@ -81,8 +89,11 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
       plannedCoworkDays: coworkEntries.length,
       plannedHolidayDays: holidayEntries.length,
       totalPlannedHours,
+      hasNegativeHolidayBalance,
     };
   });
+
+  const negativeHolidayBalanceCount = employeeStats.filter((e) => e.hasNegativeHolidayBalance).length;
 
   const dateSet = [...new Set(entries.map((e) => e.date))].sort();
   const dailyOnsiteRate = dateSet.map((date) => {
@@ -150,6 +161,7 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
     totalViolations,
     violations: storedViolations,
     totalDesks,
+    negativeHolidayBalanceCount,
   });
 });
 

@@ -955,6 +955,17 @@ export const GetMonthPlanningResponse = zod.object({
     }),
   ),
   generatedAt: zod.coerce.date().nullish(),
+  negativeBalanceEmployees: zod
+    .array(
+      zod.object({
+        employeeId: zod.number(),
+        name: zod.string(),
+      }),
+    )
+    .nullish()
+    .describe(
+      "Populated after confirmation — employees whose holiday balance went negative",
+    ),
 });
 
 /**
@@ -1019,6 +1030,17 @@ export const GeneratePlanningResponse = zod.object({
     }),
   ),
   generatedAt: zod.coerce.date().nullish(),
+  negativeBalanceEmployees: zod
+    .array(
+      zod.object({
+        employeeId: zod.number(),
+        name: zod.string(),
+      }),
+    )
+    .nullish()
+    .describe(
+      "Populated after confirmation — employees whose holiday balance went negative",
+    ),
 });
 
 /**
@@ -1084,6 +1106,17 @@ export const GenerateEmployeePlanningResponse = zod.object({
     }),
   ),
   generatedAt: zod.coerce.date().nullish(),
+  negativeBalanceEmployees: zod
+    .array(
+      zod.object({
+        employeeId: zod.number(),
+        name: zod.string(),
+      }),
+    )
+    .nullish()
+    .describe(
+      "Populated after confirmation — employees whose holiday balance went negative",
+    ),
 });
 
 /**
@@ -1133,6 +1166,17 @@ export const ConfirmPlanningResponse = zod.object({
     }),
   ),
   generatedAt: zod.coerce.date().nullish(),
+  negativeBalanceEmployees: zod
+    .array(
+      zod.object({
+        employeeId: zod.number(),
+        name: zod.string(),
+      }),
+    )
+    .nullish()
+    .describe(
+      "Populated after confirmation — employees whose holiday balance went negative",
+    ),
 });
 
 /**
@@ -1232,6 +1276,9 @@ export const GetDashboardSummaryResponse = zod.object({
       plannedCoworkDays: zod.number(),
       plannedHolidayDays: zod.number(),
       totalPlannedHours: zod.number(),
+      hasNegativeHolidayBalance: zod
+        .boolean()
+        .describe("True if C0 or any other holiday code balance is negative"),
     }),
   ),
   dailyOnsiteRate: zod.array(
@@ -1259,6 +1306,9 @@ export const GetDashboardSummaryResponse = zod.object({
       message: zod.string(),
     }),
   ),
+  negativeHolidayBalanceCount: zod
+    .number()
+    .describe("Number of employees with at least one negative holiday balance"),
 });
 
 /**
