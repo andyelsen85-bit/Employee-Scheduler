@@ -138,8 +138,13 @@ function bestCodeByTarget(
 
 /**
  * Returns the effective hours for a shift code.
- * If the code has `scalesWithContract = true` and a contractPct is supplied,
- * the base hours are multiplied by (contractPct / 100).
+ * Hours are pro-rated by contract% when:
+ *   - the code has `scalesWithContract = true`, OR
+ *   - the code is a `holiday` type (e.g. C0). A part-time employee taking a
+ *     public holiday is credited a fraction of a full day, so an 80%
+ *     employee's holiday is worth 6.08h not 7.6h. This rule is applied even
+ *     when `scalesWithContract = false` to keep the planner, PRM update, and
+ *     frontend hour totals consistent for part-time employees.
  * contractPct should be 0–100 (e.g. 80 for an 80% employee).
  */
 function hoursForCode(
@@ -151,7 +156,11 @@ function hoursForCode(
   const sc = shiftCodes[code];
   if (!sc) return 0;
   const base = sc.hours;
-  if (sc.scalesWithContract && contractPct !== undefined && contractPct !== 100) {
+  const shouldScale =
+    contractPct !== undefined &&
+    contractPct !== 100 &&
+    (sc.scalesWithContract || sc.type === "holiday");
+  if (shouldScale) {
     return base * (contractPct / 100);
   }
   return base;
@@ -564,18 +573,21 @@ export function generatePlanning(params: {
     lockedJlDatesByEmp
   );
 
-  // Per-employee contractual hours (scaled by contract %) with PRM counter compensation
+  // Per-employee contractual hours (scaled by contract %).
+  // NOTE: PRM counter compensation has been intentionally removed from the auto-planner
+  // target. Reducing the monthly target by ±10h via PRM was forcing an extra JL substitution
+  // for full-time employees with positive PRM (e.g. PRM=24 clamped to 10 → target 166h vs
+  // a natural 19×8=152h, triggering one substitution JL on top of the pre-config JL → "double
+  // JL" bug). The PRM counter is still tracked and displayed for HR review; balancing now
+  // happens organically (e.g. via manual locked C0/JL days) rather than by silently shrinking
+  // the auto-generated plan.
   const empContractualHours: Record<number, number> = {};
   const empBaseContractualHours: Record<number, number> = {};
   for (const emp of employees) {
     const pct = emp.contractPercent ?? 100;
     const base = Math.round(contractualHours * (pct / 100) * 10) / 10;
     empBaseContractualHours[emp.id] = base;
-    // Adjust monthly target by PRM counter to trend it back towards 0
-    // If prmCounter > 0 (overpaid hours), plan fewer hours this month; if < 0, plan more
-    const prm = emp.prmCounter ?? 0;
-    const clampedPrm = Math.max(-10, Math.min(10, prm));
-    empContractualHours[emp.id] = Math.round(Math.max(0, base - clampedPrm) * 10) / 10;
+    empContractualHours[emp.id] = base;
   }
 
   // ── PHASE 1: Pre-determine day types + JL substitutions per employee ───────

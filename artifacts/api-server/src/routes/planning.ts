@@ -816,7 +816,10 @@ router.post("/planning/:year/:month/confirm", requireAdmin, async (req, res): Pr
       const sc = shiftCodeMap.get(entry.shiftCode);
       if (!sc) continue;
       const pct = empContractPct[entry.employeeId] ?? 100;
-      const hours = sc.scalesWithContract && pct !== 100 ? sc.hours * (pct / 100) : sc.hours;
+      // Holiday-type codes always pro-rate by contract% (see hoursForCode in planner.ts).
+      // This keeps the PRM diff in sync with the frontend display for part-time employees.
+      const shouldScale = pct !== 100 && (sc.scalesWithContract || sc.type === "holiday");
+      const hours = shouldScale ? sc.hours * (pct / 100) : sc.hours;
       plannedByEmployee[entry.employeeId] = (plannedByEmployee[entry.employeeId] ?? 0) + hours;
 
       // Track holiday code consumption for balance decrements

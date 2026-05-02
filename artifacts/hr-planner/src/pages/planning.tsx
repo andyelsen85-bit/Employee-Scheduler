@@ -488,8 +488,8 @@ export default function Planning() {
     end: endOfMonth(date)
   });
 
-  const shiftCodesInfoMap = new Map<string, { hours: number; scalesWithContract?: boolean }>(
-    (shiftCodes ?? []).map(sc => [sc.code, { hours: sc.hours, scalesWithContract: sc.scalesWithContract ?? false }])
+  const shiftCodesInfoMap = new Map<string, { hours: number; scalesWithContract?: boolean; type: string }>(
+    (shiftCodes ?? []).map(sc => [sc.code, { hours: sc.hours, scalesWithContract: sc.scalesWithContract ?? false, type: sc.type }])
   );
 
   const officialHours = monthlyConfig?.contractualHours ?? null;
@@ -499,12 +499,19 @@ export default function Planning() {
     if (!planning) return 0;
     const emp = employees?.find(e => e.id === empId);
     const contractPct = emp?.contractPercent ?? 100;
+    // Holiday-type codes (e.g. C0 = 7.6h public holiday credit) always pro-rate by contract%
+    // even when scales_with_contract=false on the shift code. A part-time employee's holiday
+    // is worth a fraction of a full day, so an 80% employee taking 10 C0 days is credited
+    // 10 × 7.6 × 0.8 = 60.8h, not 76h. Without this rule, part-time totals appear inflated
+    // (e.g. Emmanuel reading 156h for an 80% / 141h target month).
     return planning.entries
       .filter(e => e.employeeId === empId && e.shiftCode && e.date.startsWith(currentMonthPrefix))
       .reduce((sum, e) => {
         const info = shiftCodesInfoMap.get(e.shiftCode!);
         if (!info) return sum;
-        const h = info.scalesWithContract && contractPct !== 100 ? info.hours * (contractPct / 100) : info.hours;
+        const shouldScale =
+          contractPct !== 100 && (info.scalesWithContract || info.type === "holiday");
+        const h = shouldScale ? info.hours * (contractPct / 100) : info.hours;
         return sum + h;
       }, 0);
   }
