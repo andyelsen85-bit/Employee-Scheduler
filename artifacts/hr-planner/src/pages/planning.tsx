@@ -121,7 +121,7 @@ export default function Planning() {
     toast({ title: "Generating PDF..." });
     try {
       const { default: jsPDF } = await import("jspdf");
-      const { default: html2canvas } = await import("html2canvas");
+      const { default: html2canvas } = await import("html2canvas-pro");
 
       const el = gridRef.current;
       const canvas = await html2canvas(el, {
@@ -155,7 +155,8 @@ export default function Planning() {
       pdf.addImage(imgData, "PNG", 0, 0, canvas.width * ratio, canvas.height * ratio);
       pdf.save(`planning-${year}-${String(month).padStart(2, "0")}.pdf`);
     } catch (err) {
-      toast({ title: "Failed to generate PDF", variant: "destructive" });
+      console.error("PDF export failed:", err);
+      toast({ title: "Failed to generate PDF", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
     }
   };
 
