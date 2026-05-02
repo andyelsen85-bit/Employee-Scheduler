@@ -16,6 +16,7 @@ declare module "express-session" {
 const router = Router();
 
 router.get("/auth/setup-status", async (_req, res): Promise<void> => {
+  res.setHeader("Cache-Control", "no-store");
   const [admin] = await db.select().from(usersTable).where(eq(usersTable.username, "admin"));
   res.json({ needsSetup: !admin || admin.passwordHash === SETUP_REQUIRED_MARKER });
 });
