@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import type { Request } from "express";
+import { requireAuth } from "../middleware/auth.js";
 
 declare module "express-session" {
   interface SessionData {
@@ -47,6 +48,40 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     }
     res.json({ id: user.id, username: user.username, role: user.role, employeeId: user.employeeId });
   });
+});
+
+router.post("/auth/change-password", requireAuth, async (req: Request, res): Promise<void> => {
+  const { currentPassword, newPassword } = req.body as { currentPassword?: string; newPassword?: string };
+  if (!currentPassword || !newPassword) {
+    res.status(400).json({ error: "Current password and new password are required" });
+    return;
+  }
+  if (newPassword.length < 6) {
+    res.status(400).json({ error: "New password must be at least 6 characters" });
+    return;
+  }
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.session.userId!));
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  let valid = false;
+  if (user.isLegacy) {
+    valid = user.passwordHash === currentPassword;
+  } else {
+    valid = await bcrypt.compare(currentPassword, user.passwordHash);
+  }
+
+  if (!valid) {
+    res.status(401).json({ error: "Current password is incorrect" });
+    return;
+  }
+
+  const hash = await bcrypt.hash(newPassword, 10);
+  await db.update(usersTable).set({ passwordHash: hash, isLegacy: false }).where(eq(usersTable.id, user.id));
+  res.json({ message: "Password changed successfully" });
 });
 
 router.post("/auth/logout", (req, res): void => {
