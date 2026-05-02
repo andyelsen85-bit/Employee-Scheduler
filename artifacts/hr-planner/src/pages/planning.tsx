@@ -708,12 +708,17 @@ export default function Planning() {
                           const hasViolation = planning.violations.some(v => v.date.startsWith(dateStr) && (v.employeeId === emp.id || v.employeeId === null));
                           const hasDeskClash = !!(entry?.deskCode && deskClashes.get(dateStr)?.has(emp.id));
                           const hasShift = !!(entry?.shiftCode);
-                          const isOnPermanence = !weekend && isEmpOnPermanence(emp.id, dateStr);
+                          const isOnPermanence = isEmpOnPermanence(emp.id, dateStr);
                           const demand = !weekend ? getDemandForCell(emp.id, dayNum) : null;
                           const canAddDemand = !isAdmin && isMyRow && !weekend;
 
                           return (
                             <td key={day.toISOString()} className={`p-1 border-r text-center relative ${weekend ? 'bg-muted/20' : ''} ${hasViolation ? 'bg-destructive/5' : ''}`}>
+                              {weekend && isOnPermanence && (
+                                <div className="flex justify-end pr-0.5">
+                                  <Shield className="h-2.5 w-2.5 text-blue-400/70" aria-label="Permanence duty" />
+                                </div>
+                              )}
                               {!weekend && (
                                 <div className="flex flex-col gap-0.5">
                                   {isOnPermanence && (
