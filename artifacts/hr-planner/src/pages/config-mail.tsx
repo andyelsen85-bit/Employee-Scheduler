@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Save, Send, Mail } from "lucide-react";
+import { Save, Send, Mail, Bell, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 type MailSettingsData = {
@@ -18,12 +18,36 @@ type MailSettingsData = {
   hasPassword: boolean;
 };
 
+type NotificationStatus = {
+  intervalMs: number;
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+  running: boolean;
+};
+
+function formatCountdown(ms: number): string {
+  if (ms <= 0) return "any moment now";
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes <= 0) return `in ${seconds}s`;
+  return `in ${minutes}m ${String(seconds).padStart(2, "0")}s`;
+}
+
+function formatAbsolute(iso: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString();
+}
+
 export default function MailSettingsPage() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testEmail, setTestEmail] = useState("");
   const [testing, setTesting] = useState(false);
+  const [notifStatus, setNotifStatus] = useState<NotificationStatus | null>(null);
+  const [sendingNow, setSendingNow] = useState(false);
+  const [tick, setTick] = useState(0);
   const [form, setForm] = useState<MailSettingsData & { smtpPassword: string }>({
     smtpHost: "",
     smtpPort: 587,
@@ -58,6 +82,42 @@ export default function MailSettingsPage() {
   };
 
   useEffect(() => { load(); }, []);
+
+  const loadNotifStatus = async () => {
+    try {
+      const res = await fetch("/api/settings/mail/notifications/status", { credentials: "include" });
+      if (res.ok) setNotifStatus(await res.json());
+    } catch { /* ignore */ }
+  };
+
+  // Refresh status from server every 30s, and tick every second to update the countdown.
+  useEffect(() => {
+    loadNotifStatus();
+    const refresh = setInterval(loadNotifStatus, 30000);
+    const ticker = setInterval(() => setTick(t => t + 1), 1000);
+    return () => { clearInterval(refresh); clearInterval(ticker); };
+  }, []);
+
+  const handleSendNow = async () => {
+    setSendingNow(true);
+    try {
+      const res = await fetch("/api/settings/mail/notifications/run-now", {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast({ title: "Notifications sent" });
+        if (data.status) setNotifStatus(data.status);
+      } else {
+        toast({ title: data.error || "Failed to send notifications", variant: "destructive" });
+      }
+    } catch (e: unknown) {
+      toast({ title: String(e), variant: "destructive" });
+    } finally {
+      setSendingNow(false);
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -168,6 +228,41 @@ export default function MailSettingsPage() {
                 <Button onClick={handleSave} disabled={saving} className="w-full">
                   <Save className="h-4 w-4 mr-2" />
                   {saving ? "Saving..." : "Save Settings"}
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2"><Bell className="h-4 w-4" />Demand Notifications</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Pending shift demands and decisions are emailed to all admin users automatically every {Math.round((notifStatus?.intervalMs ?? 30 * 60 * 1000) / 60000)} minutes.
+                </p>
+                <div className="flex items-start gap-2 text-sm">
+                  <Clock className="h-4 w-4 text-muted-foreground mt-0.5" />
+                  <div className="flex flex-col gap-0.5">
+                    <span>
+                      Next automatic run:&nbsp;
+                      <span className="font-medium">
+                        {(() => {
+                          void tick;
+                          if (notifStatus?.running) return "running now…";
+                          if (!notifStatus?.nextRunAt) return "—";
+                          const ms = new Date(notifStatus.nextRunAt).getTime() - Date.now();
+                          return `${formatCountdown(ms)} (${formatAbsolute(notifStatus.nextRunAt)})`;
+                        })()}
+                      </span>
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      Last run: {notifStatus?.lastRunAt ? formatAbsolute(notifStatus.lastRunAt) : "never since server started"}
+                    </span>
+                  </div>
+                </div>
+                <Button onClick={handleSendNow} disabled={sendingNow || notifStatus?.running} className="w-full">
+                  <Send className="h-4 w-4 mr-2" />
+                  {sendingNow || notifStatus?.running ? "Sending…" : "Send Now All Notifications"}
                 </Button>
               </CardContent>
             </Card>

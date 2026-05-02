@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, mailSettingsTable } from "@workspace/db";
 import { requireAdmin } from "../middleware/auth.js";
 import { createTransport } from "../lib/mailer.js";
+import { getNotificationStatus, runNotificationsNow } from "../lib/notifications.js";
 
 const router = Router();
 
@@ -64,6 +65,19 @@ router.put("/settings/mail", requireAdmin, async (req, res): Promise<void> => {
     smtpSecure: row!.smtpSecure,
     hasPassword: !!(row!.smtpPasswordEncrypted),
   });
+});
+
+router.get("/settings/mail/notifications/status", requireAdmin, async (_req, res): Promise<void> => {
+  res.json(getNotificationStatus());
+});
+
+router.post("/settings/mail/notifications/run-now", requireAdmin, async (_req, res): Promise<void> => {
+  const result = await runNotificationsNow();
+  if (result.ok) {
+    res.json({ ok: true, status: getNotificationStatus() });
+  } else {
+    res.status(500).json({ ok: false, error: result.error });
+  }
 });
 
 router.post("/settings/mail/test", requireAdmin, async (req, res): Promise<void> => {
