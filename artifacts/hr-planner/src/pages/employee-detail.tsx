@@ -22,8 +22,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
-import { useState, useEffect } from "react";
-import { ArrowLeft, Save, Plus, Trash2, Lock } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { ArrowLeft, Save, Plus, Trash2, Lock, ChevronDown, ChevronRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const COUNTRY_OPTIONS = [
@@ -43,6 +43,16 @@ const DAY_OPTIONS = [
 ];
 
 type DayPref = { day: number; code: string };
+
+type BalanceLogEntry = {
+  id: number;
+  shiftCode: string;
+  delta: number;
+  previousValue: number;
+  newValue: number;
+  triggeredBy: string;
+  createdAt: string;
+};
 
 export default function EmployeeDetail() {
   const params = useParams();
@@ -72,9 +82,33 @@ export default function EmployeeDetail() {
   const [allowedCodes, setAllowedCodes] = useState<Set<string>>(new Set());
   const [dayPrefs, setDayPrefs] = useState<DayPref[]>([]);
   const [prefersHA, setPrefersHA] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [balanceHistory, setBalanceHistory] = useState<BalanceLogEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   // adminUsers stores { employeeId (used as approverAdminId FK), username }
   // approverAdminId on employees references employees.id, not users.id
   const [adminUsers, setAdminUsers] = useState<Array<{ employeeId: number; username: string }>>([]);
+
+  const fetchBalanceHistory = useCallback(async () => {
+    if (!id) return;
+    setHistoryLoading(true);
+    try {
+      const res = await fetch(`/api/employees/${id}/balance-history`, { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        setBalanceHistory(data);
+      }
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [id]);
+
+  const handleToggleHistory = () => {
+    if (!historyOpen) {
+      fetchBalanceHistory();
+    }
+    setHistoryOpen((v) => !v);
+  };
 
   useEffect(() => {
     fetch("/api/users", { credentials: "include" })
@@ -175,6 +209,7 @@ export default function EmployeeDetail() {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetEmployeeQueryKey(id) });
           toast({ title: "Counters updated" });
+          if (historyOpen) fetchBalanceHistory();
         },
       }
     );
@@ -519,6 +554,63 @@ export default function EmployeeDetail() {
             </CardContent>
           </Card>
         </div>
+
+        <Card>
+          <CardHeader className="cursor-pointer select-none" onClick={handleToggleHistory}>
+            <div className="flex items-center justify-between">
+              <CardTitle>Balance History</CardTitle>
+              {historyOpen ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+            </div>
+          </CardHeader>
+          {historyOpen && (
+            <CardContent>
+              {historyLoading ? (
+                <div className="space-y-2">
+                  {[1, 2, 3].map((i) => <Skeleton key={i} className="h-8 w-full" />)}
+                </div>
+              ) : balanceHistory.length === 0 ? (
+                <p className="text-sm text-muted-foreground italic text-center py-4">No balance changes recorded yet.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-xs text-muted-foreground font-medium">
+                        <th className="pb-2 pr-4">Date</th>
+                        <th className="pb-2 pr-4">Code</th>
+                        <th className="pb-2 pr-4 text-right">Before</th>
+                        <th className="pb-2 pr-4 text-right">Change</th>
+                        <th className="pb-2 pr-4 text-right">After</th>
+                        <th className="pb-2">Source</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {balanceHistory.map((entry) => {
+                        const isNeg = entry.delta < 0;
+                        const label = entry.triggeredBy.startsWith("planning_confirm:")
+                          ? `Confirmed: ${entry.triggeredBy.replace("planning_confirm:", "")}`
+                          : "Manual edit";
+                        return (
+                          <tr key={entry.id} className="border-b last:border-0 hover:bg-muted/30">
+                            <td className="py-2 pr-4 text-muted-foreground text-xs">
+                              {new Date(entry.createdAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+                            </td>
+                            <td className="py-2 pr-4 font-mono font-medium">{entry.shiftCode}</td>
+                            <td className="py-2 pr-4 text-right text-muted-foreground">{entry.previousValue.toFixed(1)}h</td>
+                            <td className={`py-2 pr-4 text-right font-medium ${isNeg ? "text-destructive" : "text-green-600 dark:text-green-400"}`}>
+                              {isNeg ? "" : "+"}{entry.delta.toFixed(1)}h
+                            </td>
+                            <td className="py-2 pr-4 text-right">{entry.newValue.toFixed(1)}h</td>
+                            <td className="py-2 text-xs text-muted-foreground">{label}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          )}
+        </Card>
 
         <Card>
           <CardHeader>

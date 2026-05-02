@@ -1,7 +1,7 @@
 import { requireAdmin } from "../middleware/auth.js";
 import { Router } from "express";
-import { eq } from "drizzle-orm";
-import { db, employeesTable, employeeHolidayBalancesTable } from "@workspace/db";
+import { eq, desc } from "drizzle-orm";
+import { db, employeesTable, employeeHolidayBalancesTable, holidayBalanceLogTable } from "@workspace/db";
 import {
   CreateEmployeeBody,
   UpdateEmployeeBody,
@@ -180,6 +180,30 @@ router.delete("/employees/:id", requireAdmin, async (req, res): Promise<void> =>
   res.sendStatus(204);
 });
 
+router.get("/employees/:id/balance-history", requireAdmin, async (req, res): Promise<void> => {
+  const id = parseInt(String(req.params.id), 10);
+  if (isNaN(id)) {
+    res.status(400).json({ error: "Invalid employee id" });
+    return;
+  }
+  const limit = Math.min(parseInt(String(req.query.limit ?? "50"), 10) || 50, 200);
+  const rows = await db
+    .select()
+    .from(holidayBalanceLogTable)
+    .where(eq(holidayBalanceLogTable.employeeId, id))
+    .orderBy(desc(holidayBalanceLogTable.createdAt))
+    .limit(limit);
+  res.json(rows.map((r) => ({
+    id: r.id,
+    shiftCode: r.shiftCode,
+    delta: r.delta,
+    previousValue: r.previousValue,
+    newValue: r.newValue,
+    triggeredBy: r.triggeredBy,
+    createdAt: r.createdAt.toISOString(),
+  })));
+});
+
 router.put("/employees/:id/counters", requireAdmin, async (req, res): Promise<void> => {
   const params = UpdateEmployeeCountersParams.safeParse(req.params);
   if (!params.success) {
@@ -192,6 +216,23 @@ router.put("/employees/:id/counters", requireAdmin, async (req, res): Promise<vo
     return;
   }
   const data = parsed.data;
+
+  // Fetch current values before update so we can compute deltas for the log
+  const [currentEmp] = await db
+    .select({ holidayHoursRemaining: employeesTable.holidayHoursRemaining })
+    .from(employeesTable)
+    .where(eq(employeesTable.id, params.data.id));
+  if (!currentEmp) {
+    res.status(404).json({ error: "Employee not found" });
+    return;
+  }
+  const currentBalances = await db
+    .select()
+    .from(employeeHolidayBalancesTable)
+    .where(eq(employeeHolidayBalancesTable.employeeId, params.data.id));
+  const currentBalanceMap: Record<string, number> = {};
+  for (const b of currentBalances) currentBalanceMap[b.shiftCodeCode] = b.balanceHours;
+
   const updateData: Partial<typeof employeesTable.$inferInsert> = {};
   if (data.prmCounter !== undefined) updateData.prmCounter = data.prmCounter;
   if (data.holidayHoursRemaining !== undefined) updateData.holidayHoursRemaining = data.holidayHoursRemaining;
@@ -208,9 +249,28 @@ router.put("/employees/:id/counters", requireAdmin, async (req, res): Promise<vo
     return;
   }
 
+  // Log C0 change if holidayHoursRemaining was updated
+  if (data.holidayHoursRemaining !== undefined) {
+    const prevValue = currentEmp.holidayHoursRemaining;
+    const newValue = data.holidayHoursRemaining;
+    const delta = Math.round((newValue - prevValue) * 10) / 10;
+    if (delta !== 0) {
+      await db.insert(holidayBalanceLogTable).values({
+        employeeId: params.data.id,
+        shiftCode: "C0",
+        delta,
+        previousValue: prevValue,
+        newValue,
+        triggeredBy: "manual_edit",
+      });
+    }
+  }
+
   // Handle holiday balances upsert for other holiday codes
   if (data.holidayBalances && typeof data.holidayBalances === "object") {
     for (const [code, balance] of Object.entries(data.holidayBalances as Record<string, number>)) {
+      const prevValue = currentBalanceMap[code] ?? 0;
+      const newValue = balance;
       await db
         .insert(employeeHolidayBalancesTable)
         .values({ employeeId: params.data.id, shiftCodeCode: code, balanceHours: balance })
@@ -218,6 +278,17 @@ router.put("/employees/:id/counters", requireAdmin, async (req, res): Promise<vo
           target: [employeeHolidayBalancesTable.employeeId, employeeHolidayBalancesTable.shiftCodeCode],
           set: { balanceHours: balance, updatedAt: new Date() },
         });
+      const delta = Math.round((newValue - prevValue) * 10) / 10;
+      if (delta !== 0) {
+        await db.insert(holidayBalanceLogTable).values({
+          employeeId: params.data.id,
+          shiftCode: code,
+          delta,
+          previousValue: prevValue,
+          newValue,
+          triggeredBy: "manual_edit",
+        });
+      }
     }
   }
 

@@ -1,6 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { ensureSchema, seedAdminUser, ensureUserSessionsTable } from "./lib/seed.js";
+import { ensureSchema, seedAdminUser, ensureUserSessionsTable, ensureHolidayTables } from "./lib/seed.js";
 import { startNotificationJob } from "./lib/notifications.js";
 
 const rawPort = process.env["PORT"];
@@ -26,6 +26,7 @@ app.listen(port, async (err) => {
   logger.info({ port }, "Server listening");
   await ensureSchema();
   await ensureUserSessionsTable();
+  await ensureHolidayTables();
   await seedAdminUser();
   startNotificationJob();
 });

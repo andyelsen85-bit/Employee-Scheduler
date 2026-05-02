@@ -46,6 +46,45 @@ export async function ensureUserSessionsTable(): Promise<void> {
   }
 }
 
+export async function ensureHolidayTables(): Promise<void> {
+  try {
+    const client = await pool.connect();
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "employee_holiday_balances" (
+          "id" serial PRIMARY KEY NOT NULL,
+          "employee_id" integer NOT NULL REFERENCES "employees"("id") ON DELETE CASCADE,
+          "shift_code_code" varchar(16) NOT NULL,
+          "balance_hours" real NOT NULL DEFAULT 0,
+          "updated_at" timestamptz NOT NULL DEFAULT now(),
+          CONSTRAINT "uniq_emp_holiday_code" UNIQUE("employee_id", "shift_code_code")
+        );
+      `);
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "holiday_balance_log" (
+          "id" serial PRIMARY KEY NOT NULL,
+          "employee_id" integer NOT NULL REFERENCES "employees"("id") ON DELETE CASCADE,
+          "shift_code" text NOT NULL,
+          "delta" real NOT NULL,
+          "previous_value" real NOT NULL,
+          "new_value" real NOT NULL,
+          "triggered_by" text NOT NULL,
+          "created_at" timestamptz NOT NULL DEFAULT now()
+        );
+      `);
+      await client.query(`
+        CREATE INDEX IF NOT EXISTS "holiday_balance_log_emp_idx"
+        ON "holiday_balance_log" ("employee_id", "created_at" DESC);
+      `);
+    } finally {
+      client.release();
+    }
+    logger.info("holiday tables ensured");
+  } catch (err) {
+    logger.error({ err }, "Failed to ensure holiday tables");
+  }
+}
+
 export async function seedAdminUser(): Promise<void> {
   try {
     const [existing] = await db.select().from(usersTable).where(eq(usersTable.username, "admin"));

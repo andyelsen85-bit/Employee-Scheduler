@@ -86,3 +86,20 @@ export const employeeHolidayBalancesTable = pgTable(
 );
 
 export type EmployeeHolidayBalance = typeof employeeHolidayBalancesTable.$inferSelect;
+
+export const holidayBalanceLogTable = pgTable("holiday_balance_log", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id")
+    .notNull()
+    .references(() => employeesTable.id, { onDelete: "cascade" }),
+  shiftCode: text("shift_code").notNull(),
+  delta: real("delta").notNull(),
+  previousValue: real("previous_value").notNull(),
+  newValue: real("new_value").notNull(),
+  triggeredBy: text("triggered_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export type HolidayBalanceLog = typeof holidayBalanceLogTable.$inferSelect;

@@ -15,6 +15,7 @@ import {
   spocRotationOverridesTable,
   appSettingsTable,
   employeeHolidayBalancesTable,
+  holidayBalanceLogTable,
 } from "@workspace/db";
 import {
   GetMonthPlanningParams,
@@ -843,17 +844,43 @@ router.post("/planning/:year/:month/confirm", requireAdmin, async (req, res): Pr
     }
 
     // Holiday balance decrements
+    const triggeredBy = `planning_confirm:${year}-${String(month).padStart(2, "0")}`;
     for (const [empIdStr, codeHours] of Object.entries(holidayHoursConsumed)) {
       const empId = Number(empIdStr);
       for (const [code, consumed] of Object.entries(codeHours)) {
         if (code === "C0") {
           // C0 is tracked via holidayHoursRemaining on the employees table
+          const [empRow] = await db
+            .select({ holidayHoursRemaining: employeesTable.holidayHoursRemaining })
+            .from(employeesTable)
+            .where(eq(employeesTable.id, empId));
+          const prevValue = empRow?.holidayHoursRemaining ?? 0;
+          const newValue = Math.round((prevValue - consumed) * 10) / 10;
           await db
             .update(employeesTable)
             .set({ holidayHoursRemaining: sql`${employeesTable.holidayHoursRemaining} - ${consumed}` })
             .where(eq(employeesTable.id, empId));
+          await db.insert(holidayBalanceLogTable).values({
+            employeeId: empId,
+            shiftCode: code,
+            delta: -consumed,
+            previousValue: prevValue,
+            newValue,
+            triggeredBy,
+          });
         } else {
           // All other holiday codes go into employee_holiday_balances (create row if missing)
+          const [existingBalance] = await db
+            .select({ balanceHours: employeeHolidayBalancesTable.balanceHours })
+            .from(employeeHolidayBalancesTable)
+            .where(
+              and(
+                eq(employeeHolidayBalancesTable.employeeId, empId),
+                eq(employeeHolidayBalancesTable.shiftCodeCode, code)
+              )
+            );
+          const prevValue = existingBalance?.balanceHours ?? 0;
+          const newValue = Math.round((prevValue - consumed) * 10) / 10;
           await db
             .insert(employeeHolidayBalancesTable)
             .values({ employeeId: empId, shiftCodeCode: code, balanceHours: -consumed })
@@ -864,6 +891,14 @@ router.post("/planning/:year/:month/confirm", requireAdmin, async (req, res): Pr
                 updatedAt: new Date(),
               },
             });
+          await db.insert(holidayBalanceLogTable).values({
+            employeeId: empId,
+            shiftCode: code,
+            delta: -consumed,
+            previousValue: prevValue,
+            newValue,
+            triggeredBy,
+          });
         }
       }
     }
