@@ -124,6 +124,8 @@ export default function Planning() {
       const { default: html2canvas } = await import("html2canvas-pro");
 
       const el = gridRef.current;
+      const monthLabel = format(new Date(year, month - 1, 1), "MMMM yyyy");
+
       const canvas = await html2canvas(el, {
         scale: 1.5,
         useCORS: true,
@@ -140,6 +142,13 @@ export default function Planning() {
           cloned.querySelectorAll<HTMLElement>("[data-pdf-hide]").forEach(e => {
             e.style.display = "none";
           });
+          // Defeat sticky positioning — html2canvas renders sticky elements
+          // at their viewport-anchored position, causing the "Total Hours"
+          // column to overlap mid-table day cells in the export.
+          cloned.querySelectorAll<HTMLElement>(".sticky").forEach(e => {
+            e.style.position = "static";
+            e.style.boxShadow = "none";
+          });
           // Ensure full content is visible in the clone
           cloned.style.overflow = "visible";
           cloned.style.width = el.scrollWidth + "px";
@@ -151,8 +160,26 @@ export default function Planning() {
       const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a3" });
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
-      const ratio = Math.min(pageWidth / canvas.width, pageHeight / canvas.height);
-      pdf.addImage(imgData, "PNG", 0, 0, canvas.width * ratio, canvas.height * ratio);
+      const margin = 8;
+      const titleBlockHeight = 12;
+
+      // Title (month + year) at the top of the page
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(16);
+      pdf.text(`Planning — ${monthLabel}`, margin, margin + 7);
+
+      // Fit the captured grid into the remaining space
+      const availableWidth = pageWidth - margin * 2;
+      const availableHeight = pageHeight - margin * 2 - titleBlockHeight;
+      const ratio = Math.min(availableWidth / canvas.width, availableHeight / canvas.height);
+      pdf.addImage(
+        imgData,
+        "PNG",
+        margin,
+        margin + titleBlockHeight,
+        canvas.width * ratio,
+        canvas.height * ratio,
+      );
       pdf.save(`planning-${year}-${String(month).padStart(2, "0")}.pdf`);
     } catch (err) {
       console.error("PDF export failed:", err);
