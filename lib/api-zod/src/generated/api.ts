@@ -128,6 +128,20 @@ export const ListEmployeesResponseItem = zod.object({
     .describe(
       "Manual sort order for the planning view. Lower numbers appear first within a department group.",
     ),
+  role: zod
+    .string()
+    .nullish()
+    .describe(
+      "Employee organisational role (e.g. analyst, manager, team lead)",
+    ),
+  email: zod
+    .string()
+    .nullish()
+    .describe("Employee email address (used for demand notifications)"),
+  approverAdminId: zod
+    .number()
+    .nullish()
+    .describe("ID of the admin user who approves demands for this employee"),
   notes: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -236,6 +250,20 @@ export const GetEmployeeResponse = zod.object({
     .describe(
       "Manual sort order for the planning view. Lower numbers appear first within a department group.",
     ),
+  role: zod
+    .string()
+    .nullish()
+    .describe(
+      "Employee organisational role (e.g. analyst, manager, team lead)",
+    ),
+  email: zod
+    .string()
+    .nullish()
+    .describe("Employee email address (used for demand notifications)"),
+  approverAdminId: zod
+    .number()
+    .nullish()
+    .describe("ID of the admin user who approves demands for this employee"),
   notes: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -282,6 +310,17 @@ export const UpdateEmployeeBody = zod.object({
     .number()
     .optional()
     .describe("Manual sort order within the planning view group."),
+  role: zod
+    .string()
+    .nullish()
+    .describe(
+      "Employee organisational role (e.g. analyst, manager, team lead)",
+    ),
+  email: zod.string().nullish().describe("Employee email address"),
+  approverAdminId: zod
+    .number()
+    .nullish()
+    .describe("ID of the admin user who approves demands for this employee"),
   notes: zod.string().nullish(),
 });
 
@@ -349,6 +388,20 @@ export const UpdateEmployeeResponse = zod.object({
     .describe(
       "Manual sort order for the planning view. Lower numbers appear first within a department group.",
     ),
+  role: zod
+    .string()
+    .nullish()
+    .describe(
+      "Employee organisational role (e.g. analyst, manager, team lead)",
+    ),
+  email: zod
+    .string()
+    .nullish()
+    .describe("Employee email address (used for demand notifications)"),
+  approverAdminId: zod
+    .number()
+    .nullish()
+    .describe("ID of the admin user who approves demands for this employee"),
   notes: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -436,6 +489,20 @@ export const UpdateEmployeeCountersResponse = zod.object({
     .describe(
       "Manual sort order for the planning view. Lower numbers appear first within a department group.",
     ),
+  role: zod
+    .string()
+    .nullish()
+    .describe(
+      "Employee organisational role (e.g. analyst, manager, team lead)",
+    ),
+  email: zod
+    .string()
+    .nullish()
+    .describe("Employee email address (used for demand notifications)"),
+  approverAdminId: zod
+    .number()
+    .nullish()
+    .describe("ID of the admin user who approves demands for this employee"),
   notes: zod.string().nullish(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -561,13 +628,17 @@ export const ListShiftCodesResponseItem = zod.object({
     .string()
     .describe("onsite | homework | cowork | holiday | jl | other"),
   isActive: zod.boolean(),
+  scalesWithContract: zod
+    .boolean()
+    .describe(
+      "Whether planned hours scale with the employee contract percentage",
+    ),
   color: zod
     .string()
     .nullish()
     .describe(
       "Custom hex color for this shift code in the planning view (overrides type default)",
     ),
-  scalesWithContract: zod.boolean().optional(),
 });
 export const ListShiftCodesResponse = zod.array(ListShiftCodesResponseItem);
 
@@ -577,8 +648,8 @@ export const CreateShiftCodeBody = zod.object({
   hours: zod.number(),
   type: zod.string(),
   isActive: zod.boolean().optional(),
-  color: zod.string().nullish(),
   scalesWithContract: zod.boolean().optional(),
+  color: zod.string().nullish(),
 });
 
 export const UpdateShiftCodeParams = zod.object({
@@ -590,8 +661,8 @@ export const UpdateShiftCodeBody = zod.object({
   hours: zod.number().optional(),
   type: zod.string().optional(),
   isActive: zod.boolean().optional(),
-  color: zod.string().nullish(),
   scalesWithContract: zod.boolean().optional(),
+  color: zod.string().nullish(),
 });
 
 export const UpdateShiftCodeResponse = zod.object({
@@ -602,13 +673,17 @@ export const UpdateShiftCodeResponse = zod.object({
     .string()
     .describe("onsite | homework | cowork | holiday | jl | other"),
   isActive: zod.boolean(),
+  scalesWithContract: zod
+    .boolean()
+    .describe(
+      "Whether planned hours scale with the employee contract percentage",
+    ),
   color: zod
     .string()
     .nullish()
     .describe(
       "Custom hex color for this shift code in the planning view (overrides type default)",
     ),
-  scalesWithContract: zod.boolean().optional(),
 });
 
 export const DeleteShiftCodeParams = zod.object({
@@ -1133,4 +1208,217 @@ export const GetDashboardSummaryResponse = zod.object({
     }),
   ),
   totalViolations: zod.number(),
+});
+
+/**
+ * @summary Log in and create a session
+ */
+export const LoginBody = zod.object({
+  username: zod.string(),
+  password: zod.string(),
+});
+
+export const LoginResponse = zod.object({
+  id: zod.number(),
+  username: zod.string(),
+  role: zod.string(),
+  employeeId: zod.number().nullish(),
+});
+
+/**
+ * @summary Get currently authenticated user
+ */
+export const GetMeResponse = zod.object({
+  id: zod.number(),
+  username: zod.string(),
+  role: zod.string(),
+  employeeId: zod.number().nullish(),
+});
+
+/**
+ * @summary List all system users (admin only)
+ */
+export const ListUsersResponseItem = zod.object({
+  id: zod.number(),
+  username: zod.string(),
+  role: zod.string(),
+  employeeId: zod.number().nullish(),
+  isLegacy: zod.boolean(),
+  createdAt: zod.coerce.date(),
+});
+export const ListUsersResponse = zod.array(ListUsersResponseItem);
+
+/**
+ * @summary Create a new user (admin only)
+ */
+export const CreateUserBody = zod.object({
+  username: zod.string(),
+  password: zod.string(),
+  role: zod.enum(["admin", "user"]),
+  employeeId: zod.number().nullish(),
+});
+
+/**
+ * @summary Update a user (admin only)
+ */
+export const UpdateUserParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateUserBody = zod.object({
+  username: zod.string().optional(),
+  password: zod.string().optional(),
+  role: zod.enum(["admin", "user"]).optional(),
+  employeeId: zod.number().nullish(),
+});
+
+export const UpdateUserResponse = zod.object({
+  id: zod.number(),
+  username: zod.string(),
+  role: zod.string(),
+  employeeId: zod.number().nullish(),
+  isLegacy: zod.boolean(),
+  createdAt: zod.coerce.date(),
+});
+
+/**
+ * @summary Delete a user (admin only)
+ */
+export const DeleteUserParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary List shift demands for a given month
+ */
+export const ListDemandsQueryParams = zod.object({
+  year: zod.coerce.number(),
+  month: zod.coerce.number(),
+});
+
+export const ListDemandsResponseItem = zod
+  .object({
+    id: zod.number(),
+    employeeId: zod.number(),
+    year: zod.number(),
+    month: zod.number(),
+    day: zod.number(),
+    demandCode: zod.string(),
+    status: zod.enum(["pending", "approved", "rejected"]),
+    notifiedAt: zod.string().nullish(),
+    createdAt: zod.coerce.date().optional(),
+  })
+  .and(
+    zod.object({
+      decision: zod
+        .object({
+          id: zod.number(),
+          demandId: zod.number(),
+          adminId: zod.number().nullish(),
+          decision: zod.enum(["approved", "rejected"]),
+          notifiedAt: zod.string().nullish(),
+          createdAt: zod.coerce.date().optional(),
+        })
+        .nullish(),
+    }),
+  );
+export const ListDemandsResponse = zod.array(ListDemandsResponseItem);
+
+/**
+ * @summary Create or update a shift demand
+ */
+export const CreateDemandBody = zod.object({
+  employeeId: zod.number(),
+  year: zod.number(),
+  month: zod.number(),
+  day: zod.number(),
+  demandCode: zod.string(),
+});
+
+/**
+ * @summary Delete a demand
+ */
+export const DeleteDemandParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary Approve or reject a demand (admin only)
+ */
+export const DecideDemandParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DecideDemandBody = zod.object({
+  decision: zod.enum(["approved", "rejected"]),
+});
+
+export const DecideDemandResponse = zod.object({
+  demand: zod
+    .object({
+      id: zod.number(),
+      employeeId: zod.number(),
+      year: zod.number(),
+      month: zod.number(),
+      day: zod.number(),
+      demandCode: zod.string(),
+      status: zod.enum(["pending", "approved", "rejected"]),
+      notifiedAt: zod.string().nullish(),
+      createdAt: zod.coerce.date().optional(),
+    })
+    .optional(),
+  decision: zod
+    .object({
+      id: zod.number(),
+      demandId: zod.number(),
+      adminId: zod.number().nullish(),
+      decision: zod.enum(["approved", "rejected"]),
+      notifiedAt: zod.string().nullish(),
+      createdAt: zod.coerce.date().optional(),
+    })
+    .optional(),
+});
+
+/**
+ * @summary Get SMTP mail settings (admin only)
+ */
+export const GetMailSettingsResponse = zod.object({
+  host: zod.string().nullish(),
+  port: zod.number().nullish(),
+  secure: zod.boolean().nullish(),
+  username: zod.string().nullish(),
+  password: zod.string().nullish(),
+  fromAddress: zod.string().nullish(),
+  enabled: zod.boolean().optional(),
+});
+
+/**
+ * @summary Update SMTP mail settings (admin only)
+ */
+export const UpdateMailSettingsBody = zod.object({
+  host: zod.string().nullish(),
+  port: zod.number().nullish(),
+  secure: zod.boolean().nullish(),
+  username: zod.string().nullish(),
+  password: zod.string().nullish(),
+  fromAddress: zod.string().nullish(),
+  enabled: zod.boolean().optional(),
+});
+
+export const UpdateMailSettingsResponse = zod.object({
+  host: zod.string().nullish(),
+  port: zod.number().nullish(),
+  secure: zod.boolean().nullish(),
+  username: zod.string().nullish(),
+  password: zod.string().nullish(),
+  fromAddress: zod.string().nullish(),
+  enabled: zod.boolean().optional(),
+});
+
+/**
+ * @summary Send a test email (admin only)
+ */
+export const TestMailSettingsResponse = zod.object({
+  success: zod.boolean().optional(),
+  message: zod.string().optional(),
 });

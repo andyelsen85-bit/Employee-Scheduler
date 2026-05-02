@@ -71,6 +71,23 @@ export default function EmployeeDetail() {
   const [allowedCodes, setAllowedCodes] = useState<Set<string>>(new Set());
   const [dayPrefs, setDayPrefs] = useState<DayPref[]>([]);
   const [prefersHA, setPrefersHA] = useState(false);
+  // adminUsers stores { employeeId (used as approverAdminId FK), username }
+  // approverAdminId on employees references employees.id, not users.id
+  const [adminUsers, setAdminUsers] = useState<Array<{ employeeId: number; username: string }>>([]);
+
+  useEffect(() => {
+    fetch("/api/users", { credentials: "include" })
+      .then(r => r.ok ? r.json() : [])
+      .then((users: Array<{ id: number; username: string; role: string; employeeId: number | null }>) => {
+        // Only include admin users who are linked to an employee record
+        setAdminUsers(
+          users
+            .filter(u => u.role === "admin" && u.employeeId != null)
+            .map(u => ({ employeeId: u.employeeId!, username: u.username }))
+        );
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (employee) {
@@ -90,6 +107,9 @@ export default function EmployeeDetail() {
         onsiteWeekRatio: employee.onsiteWeekRatio ?? null,
         displayOrder: employee.displayOrder ?? 0,
         notes: employee.notes ?? "",
+        role: employee.role ?? "",
+        email: employee.email ?? "",
+        approverAdminId: employee.approverAdminId ?? null,
       });
       setCounters({
         prmCounter: employee.prmCounter,
@@ -263,6 +283,41 @@ export default function EmployeeDetail() {
               <div className="space-y-1.5">
                 <Label>Name</Label>
                 <Input value={String(form.name ?? "")} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Role</Label>
+                <Input
+                  placeholder="e.g. Analyst, Manager, Team Lead"
+                  value={String(form.role ?? "")}
+                  onChange={(e) => setForm({ ...form, role: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">Organisational role or job title.</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Email</Label>
+                <Input
+                  type="email"
+                  placeholder="employee@example.com"
+                  value={String(form.email ?? "")}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">Used for shift demand notifications.</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Approver</Label>
+                <Select
+                  value={form.approverAdminId != null ? String(form.approverAdminId) : "none"}
+                  onValueChange={(v) => setForm({ ...form, approverAdminId: v === "none" ? null : Number(v) })}
+                >
+                  <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {adminUsers.map(u => (
+                      <SelectItem key={u.employeeId} value={String(u.employeeId)}>{u.username}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">Admin who receives and approves shift demand requests from this employee.</p>
               </div>
               <div className="space-y-1.5">
                 <Label>Country</Label>

@@ -1,24 +1,40 @@
-const AUTH_KEY = "hr_planner_auth";
-const VALID_USER = "admin";
-const VALID_PASS = "admin123";
+export type AuthUser = {
+  id: number;
+  username: string;
+  role: "admin" | "user";
+  employeeId: number | null;
+};
 
-export function isAuthenticated(): boolean {
+export async function fetchMe(): Promise<AuthUser | null> {
   try {
-    return localStorage.getItem(AUTH_KEY) === "true";
+    const res = await fetch("/api/auth/me", { credentials: "include" });
+    if (!res.ok) return null;
+    return await res.json() as AuthUser;
   } catch {
-    return false;
+    return null;
   }
 }
 
-export function login(username: string, password: string): boolean {
-  if (username === VALID_USER && password === VALID_PASS) {
-    localStorage.setItem(AUTH_KEY, "true");
-    return true;
+export async function apiLogin(username: string, password: string): Promise<AuthUser | null> {
+  try {
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ username, password }),
+    });
+    if (!res.ok) return null;
+    return await res.json() as AuthUser;
+  } catch {
+    return null;
   }
-  return false;
 }
 
-export function logout(): void {
-  localStorage.removeItem(AUTH_KEY);
+export async function apiLogout(): Promise<void> {
+  try {
+    await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+  } catch {
+    // ignore
+  }
   window.location.reload();
 }

@@ -1,24 +1,28 @@
 import { useState } from "react";
-import { login } from "@/hooks/use-auth";
+import { apiLogin, type AuthUser } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 interface LoginProps {
-  onSuccess: () => void;
+  onSuccess: (user: AuthUser) => void;
 }
 
 export default function Login({ onSuccess }: LoginProps) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    if (login(username, password)) {
-      onSuccess();
+    setLoading(true);
+    const user = await apiLogin(username, password);
+    setLoading(false);
+    if (user) {
+      onSuccess(user);
     } else {
       setError("Invalid username or password.");
     }
@@ -66,8 +70,8 @@ export default function Login({ onSuccess }: LoginProps) {
             {error && (
               <p className="text-sm text-red-400">{error}</p>
             )}
-            <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white">
-              Sign in
+            <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white" disabled={loading}>
+              {loading ? "Signing in..." : "Sign in"}
             </Button>
           </form>
         </CardContent>

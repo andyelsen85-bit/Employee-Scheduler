@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { db, permanenceOverridesTable, permanenceRotationOrderTable, employeesTable } from "@workspace/db";
 import { and, eq, isNotNull } from "drizzle-orm";
+import { requireAdmin } from "../middleware/auth.js";
 
 export const permanenceRouter = Router();
 
@@ -39,7 +40,7 @@ permanenceRouter.get("/rotation-order", async (req, res) => {
   return res.json(result);
 });
 
-permanenceRouter.put("/rotation-order", async (req, res) => {
+permanenceRouter.put("/rotation-order", requireAdmin, async (req, res) => {
   const items = req.body as Array<{ employeeId: number; rotationOrder: number }>;
   if (!Array.isArray(items)) {
     return res.status(400).json({ error: "Expected array of {employeeId, rotationOrder}" });
@@ -64,8 +65,8 @@ permanenceRouter.put("/rotation-order", async (req, res) => {
   return res.json({ ok: true });
 });
 
-permanenceRouter.post("/:year/recalculate", async (req, res) => {
-  const year = parseInt(req.params.year, 10);
+permanenceRouter.post("/:year/recalculate", requireAdmin, async (req, res) => {
+  const year = parseInt(req.params.year as string, 10);
   if (isNaN(year)) return res.status(400).json({ error: "Invalid year" });
 
   await db.delete(permanenceOverridesTable)
@@ -122,10 +123,10 @@ permanenceRouter.get("/:year", async (req, res) => {
   return res.json({ year, totalWeeks, weeks, employees });
 });
 
-permanenceRouter.put("/:year/:week/:group", async (req, res) => {
-  const year = parseInt(req.params.year, 10);
-  const week = parseInt(req.params.week, 10);
-  const group = parseInt(req.params.group, 10);
+permanenceRouter.put("/:year/:week/:group", requireAdmin, async (req, res) => {
+  const year = parseInt(req.params.year as string, 10);
+  const week = parseInt(req.params.week as string, 10);
+  const group = parseInt(req.params.group as string, 10);
   const { employeeId } = req.body as { employeeId: number | null };
 
   if (isNaN(year) || isNaN(week) || isNaN(group) || (group !== 1 && group !== 2)) {

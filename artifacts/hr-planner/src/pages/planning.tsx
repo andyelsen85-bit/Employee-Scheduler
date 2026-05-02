@@ -2,14 +2,15 @@ import { Layout } from "@/components/layout";
 import { useParams, Link } from "wouter";
 import { useGetMonthPlanning, getGetMonthPlanningQueryKey, useListEmployees, getListEmployeesQueryKey, useListShiftCodes, getListShiftCodesQueryKey, useGeneratePlanning, useGenerateEmployeePlanning, useConfirmPlanning, useUpdatePlanningEntry, useCreatePlanningEntry, useGetMonthlyConfig, getGetMonthlyConfigQueryKey, useListOffices, getListOfficesQueryKey, useListDepartments, getListDepartmentsQueryKey } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, CheckCircle, Wand2, AlertCircle, Trash2, Lock, RefreshCw, Shield } from "lucide-react";
-import { useState, Fragment, useEffect } from "react";
+import { ChevronLeft, ChevronRight, CheckCircle, Wand2, AlertCircle, Trash2, Lock, RefreshCw, Shield, FileDown, Check, X } from "lucide-react";
+import { useState, Fragment, useEffect, useRef } from "react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useAuth } from "@/context/auth-context";
 
 interface PermanenceWeek {
   weekStart: string;
@@ -17,12 +18,26 @@ interface PermanenceWeek {
   g2EmployeeId: number | null;
 }
 
+type Demand = {
+  id: number;
+  employeeId: number;
+  year: number;
+  month: number;
+  day: number;
+  demandCode: string;
+  status: string;
+  decision: { id: number; decision: string } | null;
+};
+
 export default function Planning() {
   const params = useParams();
   const year = parseInt(params.year || new Date().getFullYear().toString(), 10);
   const month = parseInt(params.month || (new Date().getMonth() + 1).toString(), 10);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+  const gridRef = useRef<HTMLDivElement>(null);
 
   const { data: planning, isLoading: isLoadingPlanning } = useGetMonthPlanning(year, month, {
     query: { queryKey: getGetMonthPlanningQueryKey(year, month) }
@@ -47,6 +62,103 @@ export default function Planning() {
     query: { queryKey: getListDepartmentsQueryKey() }
   });
 
+  const [demands, setDemands] = useState<Demand[]>([]);
+  const [demandLoading, setDemandLoading] = useState(false);
+
+  const loadDemands = async () => {
+    setDemandLoading(true);
+    try {
+      const res = await fetch(`/api/demands?year=${year}&month=${month}`, { credentials: "include" });
+      if (res.ok) setDemands(await res.json());
+    } catch { /* ignore */ }
+    finally { setDemandLoading(false); }
+  };
+
+  useEffect(() => { loadDemands(); }, [year, month]);
+
+  const getDemandForCell = (employeeId: number, day: number) =>
+    demands.find(d => d.employeeId === employeeId && d.day === day) ?? null;
+
+  const handleSetDemand = async (employeeId: number, day: number, demandCode: string) => {
+    try {
+      const res = await fetch("/api/demands", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ employeeId, year, month, day, demandCode }),
+      });
+      if (res.ok) await loadDemands();
+      else toast({ title: "Failed to save demand", variant: "destructive" });
+    } catch { toast({ title: "Failed to save demand", variant: "destructive" }); }
+  };
+
+  const handleDeleteDemand = async (demandId: number) => {
+    try {
+      await fetch(`/api/demands/${demandId}`, { method: "DELETE", credentials: "include" });
+      await loadDemands();
+    } catch { /* ignore */ }
+  };
+
+  const handleDecision = async (demandId: number, decision: "approved" | "rejected") => {
+    try {
+      const res = await fetch(`/api/demands/${demandId}/decision`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ decision }),
+      });
+      if (res.ok) {
+        await loadDemands();
+        queryClient.invalidateQueries({ queryKey: getGetMonthPlanningQueryKey(year, month) });
+        toast({ title: decision === "approved" ? "Demand approved" : "Demand rejected" });
+      }
+    } catch { toast({ title: "Failed to process decision", variant: "destructive" }); }
+  };
+
+  // PDF export
+  const handleExportPdf = async () => {
+    if (!gridRef.current) return;
+    toast({ title: "Generating PDF..." });
+    try {
+      const { default: jsPDF } = await import("jspdf");
+      const { default: html2canvas } = await import("html2canvas");
+
+      const el = gridRef.current;
+      const canvas = await html2canvas(el, {
+        scale: 1.5,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        // Capture the full scrollable grid, not just the visible viewport
+        width: el.scrollWidth,
+        height: el.scrollHeight,
+        windowWidth: el.scrollWidth,
+        windowHeight: el.scrollHeight,
+        scrollX: 0,
+        scrollY: 0,
+        onclone: (_doc, cloned) => {
+          // Remove demand badges from PDF output
+          cloned.querySelectorAll<HTMLElement>("[data-pdf-hide]").forEach(e => {
+            e.style.display = "none";
+          });
+          // Ensure full content is visible in the clone
+          cloned.style.overflow = "visible";
+          cloned.style.width = el.scrollWidth + "px";
+          cloned.style.height = el.scrollHeight + "px";
+        },
+      });
+
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a3" });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const ratio = Math.min(pageWidth / canvas.width, pageHeight / canvas.height);
+      pdf.addImage(imgData, "PNG", 0, 0, canvas.width * ratio, canvas.height * ratio);
+      pdf.save(`planning-${year}-${String(month).padStart(2, "0")}.pdf`);
+    } catch (err) {
+      toast({ title: "Failed to generate PDF", variant: "destructive" });
+    }
+  };
+
   // Permanence data for the displayed year (for Shield icon)
   const [permanenceWeeks, setPermanenceWeeks] = useState<PermanenceWeek[]>([]);
   useEffect(() => {
@@ -58,9 +170,6 @@ export default function Planning() {
       .catch(() => {});
   }, [year]);
 
-  // Build a lookup: employeeId → array of [weekStart, weekEnd] date strings (YYYY-MM-DD).
-  // Using date ranges rather than ISO week numbers avoids year-boundary edge cases where
-  // early January days belong to the previous ISO year's week 52/53.
   const permanenceDateRangesByEmp = new Map<number, Array<[string, string]>>();
   for (const wk of permanenceWeeks) {
     const weekEnd = (() => {
@@ -82,7 +191,6 @@ export default function Planning() {
     return ranges.some(([start, end]) => dateStr >= start && dateStr <= end);
   }
 
-  // Group employees: SPOC → Management → per dept (sorted by order) → ungrouped
   type EmpRow = NonNullable<typeof employees>[number];
   const byDisplayOrder = (a: EmpRow, b: EmpRow) =>
     (a.displayOrder ?? 0) - (b.displayOrder ?? 0);
@@ -102,7 +210,6 @@ export default function Planning() {
 
   const employeeGroups = employees && departments ? buildGroups(employees, departments) : null;
 
-  // Shift-type → inline color style
   const SHIFT_TYPE_STYLE: Record<string, { bg: string; text: string; border: string }> = {
     onsite:   { bg: "rgba(59,130,246,0.12)",  text: "#1d4ed8", border: "rgba(59,130,246,0.25)" },
     homework: { bg: "rgba(34,197,94,0.12)",   text: "#15803d", border: "rgba(34,197,94,0.25)" },
@@ -115,12 +222,10 @@ export default function Planning() {
     (shiftCodes ?? []).map(sc => [sc.code, sc.type])
   );
 
-  // Per-code custom color overrides (from shift code config)
   const shiftCodeColorMap = new Map<string, string>(
     (shiftCodes ?? []).filter(sc => sc.color).map(sc => [sc.code, sc.color!])
   );
 
-  // Build style from a hex color: bg at ~12% opacity, border at ~25%
   const hexToStyle = (hex: string) => ({ bg: hex + "1e", text: hex, border: hex + "40" });
 
   const getShiftStyle = (code: string) => {
@@ -130,7 +235,6 @@ export default function Planning() {
     return SHIFT_TYPE_STYLE[type] ?? SHIFT_TYPE_STYLE.onsite;
   };
 
-  // Desk-code → office color map
   const OFFICE_PALETTE = [
     { bg: "#dbeafe", text: "#1d4ed8", border: "#bfdbfe" },
     { bg: "#dcfce7", text: "#15803d", border: "#bbf7d0" },
@@ -155,7 +259,6 @@ export default function Planning() {
     });
   }
 
-  // Desk usage: date → Set of used desk codes
   const usedDesksByDate = new Map<string, Set<string>>();
   if (planning) {
     for (const e of planning.entries) {
@@ -166,7 +269,6 @@ export default function Planning() {
     }
   }
 
-  // Desk clash detection: date → deskCode → [employeeIds]
   const deskClashes = new Map<string, Set<number>>();
   if (planning) {
     const deskByDate = new Map<string, Map<string, number[]>>();
@@ -302,7 +404,6 @@ export default function Planning() {
     });
   };
 
-  // Create or upsert an entry from an empty cell (sets shift code, marks as locked)
   const handleCreateEntry = (employeeId: number, date: string, shiftCode: string | null) => {
     createEntry.mutate({ year, month, data: { employeeId, date, shiftCode } }, {
       onSuccess: () => {
@@ -311,7 +412,6 @@ export default function Planning() {
     });
   };
 
-  // Set desk on an existing entry, or create if missing
   const handleSetDesk = (entryId: number | undefined, employeeId: number, date: string, deskCode: string | null) => {
     if (entryId !== undefined) {
       handleUpdateDesk(entryId, deskCode);
@@ -340,19 +440,12 @@ export default function Planning() {
   );
 
   const officialHours = monthlyConfig?.contractualHours ?? null;
-
-  // Only count hours for entries within the current month — overflow entries
-  // (from the previous month's plan shown for partial-week days) and entries
-  // belonging to the next month (overflow days planned ahead) are excluded.
   const currentMonthPrefix = `${year}-${String(month).padStart(2, "0")}-`;
 
   function getEmployeePlannedHours(empId: number): number {
     if (!planning) return 0;
     const emp = employees?.find(e => e.id === empId);
     const contractPct = emp?.contractPercent ?? 100;
-    // Include ALL entries visible in this month's grid (current plan + previous month's
-    // overflow entries shown at the start of the month). The planner already accounts for
-    // those overflow hours when computing JL days, so the total correctly tracks against target.
     return planning.entries
       .filter(e => e.employeeId === empId && e.shiftCode && e.date.startsWith(currentMonthPrefix))
       .reduce((sum, e) => {
@@ -399,31 +492,39 @@ export default function Planning() {
             )}
           </div>
           
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={handleGenerate} disabled={generatePlanning.isPending || isClearing}>
-              <Wand2 className="h-4 w-4 mr-2" />
-              Generate
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleForceRegenerate} disabled={generatePlanning.isPending || isClearing} className="text-amber-700 border-amber-400 hover:bg-amber-50">
-              <Wand2 className="h-4 w-4 mr-2" />
-              Force Regenerate
-            </Button>
-            <Button size="sm" onClick={handleConfirm} disabled={confirmPlanning.isPending || planning?.status === "confirmed"}>
-              <CheckCircle className="h-4 w-4 mr-2" />
-              Confirm
-            </Button>
-            {planning && (
-              <Button variant="outline" size="sm" onClick={handleClearUnlocked} disabled={isClearing} className="text-orange-700 border-orange-400 hover:bg-orange-50">
-                <Trash2 className="h-4 w-4 mr-2" />
-                Clear unlocked
-              </Button>
+          <div className="flex gap-2 flex-wrap">
+            {isAdmin && (
+              <>
+                <Button variant="outline" size="sm" onClick={handleGenerate} disabled={generatePlanning.isPending || isClearing}>
+                  <Wand2 className="h-4 w-4 mr-2" />
+                  Generate
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleForceRegenerate} disabled={generatePlanning.isPending || isClearing} className="text-amber-700 border-amber-400 hover:bg-amber-50">
+                  <Wand2 className="h-4 w-4 mr-2" />
+                  Force Regenerate
+                </Button>
+                <Button size="sm" onClick={handleConfirm} disabled={confirmPlanning.isPending || planning?.status === "confirmed"}>
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                  Confirm
+                </Button>
+                {planning && (
+                  <Button variant="outline" size="sm" onClick={handleClearUnlocked} disabled={isClearing} className="text-orange-700 border-orange-400 hover:bg-orange-50">
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Clear unlocked
+                  </Button>
+                )}
+                {planning && (
+                  <Button variant="outline" size="sm" onClick={handleClear} disabled={isClearing} className="text-destructive border-destructive/40 hover:bg-destructive/10">
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Clear all
+                  </Button>
+                )}
+              </>
             )}
-            {planning && (
-              <Button variant="outline" size="sm" onClick={handleClear} disabled={isClearing} className="text-destructive border-destructive/40 hover:bg-destructive/10">
-                <Trash2 className="h-4 w-4 mr-2" />
-                Clear all
-              </Button>
-            )}
+            <Button variant="outline" size="sm" onClick={handleExportPdf}>
+              <FileDown className="h-4 w-4 mr-2" />
+              Export PDF
+            </Button>
           </div>
         </div>
 
@@ -453,10 +554,11 @@ export default function Planning() {
             </div>
           ) : !planning || !employees ? (
             <div className="flex-1 flex items-center justify-center text-muted-foreground p-8 text-center">
-              No planning data available for this month.<br />Click Generate to create a draft.
+              No planning data available for this month.<br />
+              {isAdmin ? "Click Generate to create a draft." : "No planning has been generated yet."}
             </div>
           ) : (
-            <div className="overflow-auto flex-1 relative">
+            <div ref={gridRef} className="overflow-auto flex-1 relative">
               <table className="w-full text-sm text-left border-collapse">
                 <thead className="text-xs uppercase bg-muted/50 sticky top-0 z-10 shadow-sm border-b">
                   <tr>
@@ -497,170 +599,295 @@ export default function Planning() {
                     const diff = empOfficialHours !== null ? planned - empOfficialHours : null;
                     const over = diff !== null && diff > 0;
                     const under = diff !== null && diff < 0;
+                    const isMyRow = !isAdmin && user?.employeeId === emp.id;
 
                     return (
                       <tr key={emp.id} className="border-b hover:bg-muted/30 transition-colors">
                         <td className="px-2 py-2 font-medium sticky left-0 bg-card z-10 border-r shadow-[1px_0_0_0_var(--color-border)]">
                           <div className="flex items-center gap-1.5 min-w-0">
                             <span className="truncate">{emp.name}</span>
-                            <button
-                              onClick={() => handleRegenerateEmployee(emp.id)}
-                              disabled={regeneratingEmployeeId !== null}
-                              title={`Regenerate ${emp.name}'s planning`}
-                              className="flex-shrink-0 p-0.5 rounded text-muted-foreground hover:text-primary hover:bg-muted transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                            >
-                              <RefreshCw className={`h-3 w-3 ${regeneratingEmployeeId === emp.id ? "animate-spin" : ""}`} />
-                            </button>
+                            {isAdmin && (
+                              <button
+                                onClick={() => handleRegenerateEmployee(emp.id)}
+                                disabled={regeneratingEmployeeId !== null}
+                                title={`Regenerate ${emp.name}'s planning`}
+                                className="flex-shrink-0 p-0.5 rounded text-muted-foreground hover:text-primary hover:bg-muted transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                              >
+                                <RefreshCw className={`h-3 w-3 ${regeneratingEmployeeId === emp.id ? "animate-spin" : ""}`} />
+                              </button>
+                            )}
                           </div>
                         </td>
                         {daysInMonth.map(day => {
                           const dateStr = format(day, "yyyy-MM-dd");
+                          const dayNum = day.getDate();
                           const entry = planning.entries.find(e => e.employeeId === emp.id && e.date.startsWith(dateStr));
                           const weekend = isWeekend(day);
                           const hasViolation = planning.violations.some(v => v.date.startsWith(dateStr) && (v.employeeId === emp.id || v.employeeId === null));
                           const hasDeskClash = !!(entry?.deskCode && deskClashes.get(dateStr)?.has(emp.id));
-
                           const hasShift = !!(entry?.shiftCode);
-
-                          // Check if this employee is on permanence duty this week
                           const isOnPermanence = !weekend && isEmpOnPermanence(emp.id, dateStr);
+                          const demand = !weekend ? getDemandForCell(emp.id, dayNum) : null;
+                          const canAddDemand = !isAdmin && isMyRow && !weekend;
 
                           return (
                             <td key={day.toISOString()} className={`p-1 border-r text-center relative ${weekend ? 'bg-muted/20' : ''} ${hasViolation ? 'bg-destructive/5' : ''}`}>
                               {!weekend && (
                                 <div className="flex flex-col gap-0.5">
-                                  {/* Permanence shield icon */}
                                   {isOnPermanence && (
                                     <div className="flex justify-end pr-0.5">
                                       <Shield className="h-2.5 w-2.5 text-blue-400/70" aria-label="Permanence duty" />
                                     </div>
                                   )}
 
-                                  {/* ── Shift code popover ── */}
-                                  <Popover>
-                                    <PopoverTrigger asChild>
-                                      {(() => {
-                                        if (hasShift) {
-                                          const style = !hasViolation ? getShiftStyle(entry!.shiftCode!) : null;
+                                  {/* ── Shift code ── */}
+                                  {isAdmin ? (
+                                    <Popover>
+                                      <PopoverTrigger asChild>
+                                        {(() => {
+                                          if (hasShift) {
+                                            const style = !hasViolation ? getShiftStyle(entry!.shiftCode!) : null;
+                                            return (
+                                              <button
+                                                className={`text-xs font-bold font-mono rounded px-1 py-0.5 leading-tight text-center border transition-colors hover:opacity-80 w-full ${entry!.isLocked ? 'ring-1 ring-amber-400/60' : ''}`}
+                                                style={style ? { backgroundColor: style.bg, color: style.text, borderColor: style.border } : undefined}
+                                              >
+                                                {entry!.shiftCode}
+                                              </button>
+                                            );
+                                          }
                                           return (
-                                            <button
-                                              className={`text-xs font-bold font-mono rounded px-1 py-0.5 leading-tight text-center border transition-colors hover:opacity-80 w-full ${entry!.isLocked ? 'ring-1 ring-amber-400/60' : ''}`}
-                                              style={style ? { backgroundColor: style.bg, color: style.text, borderColor: style.border } : undefined}
-                                            >
-                                              {entry!.shiftCode}
+                                            <button className="w-full h-6 flex items-center justify-center text-muted-foreground/30 hover:text-muted-foreground/70 hover:bg-muted/40 rounded transition-colors text-xs">
+                                              +
                                             </button>
                                           );
-                                        }
-                                        // Empty cell — show subtle "+" trigger
-                                        return (
-                                          <button className="w-full h-6 flex items-center justify-center text-muted-foreground/30 hover:text-muted-foreground/70 hover:bg-muted/40 rounded transition-colors text-xs">
-                                            +
-                                          </button>
-                                        );
-                                      })()}
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-52 p-2" side="bottom">
-                                      <div className="text-xs font-semibold text-muted-foreground mb-2">
-                                        {hasShift ? "Change Shift Code" : "Set Shift Code"}
-                                      </div>
-                                      <div className="grid grid-cols-2 gap-1">
-                                        {shiftCodes?.map(sc => {
-                                          const s = getShiftStyle(sc.code);
-                                          const isActive = sc.code === entry?.shiftCode;
-                                          return (
-                                            <button
-                                              key={sc.code}
-                                              onClick={() => hasShift
-                                                ? handleUpdateShift(entry!.id, sc.code, entry?.deskCode)
-                                                : handleCreateEntry(emp.id, dateStr, sc.code)
-                                              }
-                                              className={`text-xs font-semibold px-2 py-1.5 rounded border transition-colors hover:opacity-80 ${isActive ? 'ring-2 ring-offset-1' : ''}`}
-                                              style={s ? { backgroundColor: s.bg, color: s.text, borderColor: s.border } : undefined}
+                                        })()}
+                                      </PopoverTrigger>
+                                      <PopoverContent className="w-52 p-2" side="bottom">
+                                        <div className="text-xs font-semibold text-muted-foreground mb-2">
+                                          {hasShift ? "Change Shift Code" : "Set Shift Code"}
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-1">
+                                          {shiftCodes?.map(sc => {
+                                            const s = getShiftStyle(sc.code);
+                                            const isActive = sc.code === entry?.shiftCode;
+                                            return (
+                                              <button
+                                                key={sc.code}
+                                                onClick={() => hasShift
+                                                  ? handleUpdateShift(entry!.id, sc.code, entry?.deskCode)
+                                                  : handleCreateEntry(emp.id, dateStr, sc.code)
+                                                }
+                                                className={`text-xs font-semibold px-2 py-1.5 rounded border transition-colors hover:opacity-80 ${isActive ? 'ring-2 ring-offset-1' : ''}`}
+                                                style={s ? { backgroundColor: s.bg, color: s.text, borderColor: s.border } : undefined}
+                                              >
+                                                {sc.code}
+                                              </button>
+                                            );
+                                          })}
+                                          {hasShift && (
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              className="text-destructive text-xs col-span-2"
+                                              onClick={() => handleUpdateShift(entry!.id, "", entry?.deskCode)}
                                             >
-                                              {sc.code}
-                                            </button>
-                                          );
-                                        })}
-                                        {hasShift && (
-                                          <Button
-                                            size="sm"
-                                            variant="outline"
-                                            className="text-destructive text-xs col-span-2"
-                                            onClick={() => handleUpdateShift(entry!.id, "", entry?.deskCode)}
-                                          >
-                                            Clear shift
-                                          </Button>
-                                        )}
-                                      </div>
-                                    </PopoverContent>
-                                  </Popover>
+                                              Clear shift
+                                            </Button>
+                                          )}
+                                        </div>
+                                      </PopoverContent>
+                                    </Popover>
+                                  ) : (
+                                    <div
+                                      className={`text-xs font-bold font-mono rounded px-1 py-0.5 leading-tight text-center border w-full ${hasShift ? '' : 'opacity-0'}`}
+                                      style={hasShift && !hasViolation ? (() => { const s = getShiftStyle(entry!.shiftCode!); return { backgroundColor: s.bg, color: s.text, borderColor: s.border }; })() : undefined}
+                                    >
+                                      {entry?.shiftCode ?? "—"}
+                                    </div>
+                                  )}
 
-                                  {/* ── Desk code popover ── */}
-                                  <Popover>
-                                    <PopoverTrigger asChild>
-                                      {(() => {
-                                        if (hasShift) {
-                                          const isOnsite = shiftTypeMap.get(entry!.shiftCode!) === "onsite";
-                                          const missingDesk = isOnsite && !entry!.deskCode;
+                                  {/* ── Desk code ── */}
+                                  {isAdmin ? (
+                                    <Popover>
+                                      <PopoverTrigger asChild>
+                                        {(() => {
+                                          if (hasShift) {
+                                            const isOnsite = shiftTypeMap.get(entry!.shiftCode!) === "onsite";
+                                            const missingDesk = isOnsite && !entry!.deskCode;
+                                            return (
+                                              <button
+                                                className={`text-[9px] font-bold font-mono rounded px-1 py-0.5 leading-tight text-center border transition-colors hover:opacity-80 w-full ${hasDeskClash ? 'ring-1 ring-red-500 bg-red-50 text-red-700 border-red-300' : ''}`}
+                                                style={hasDeskClash ? undefined
+                                                  : missingDesk ? { backgroundColor: '#7f1d1d', color: '#fef2f2', borderColor: '#991b1b' }
+                                                  : entry!.deskCode && deskColorMap.get(entry!.deskCode)
+                                                    ? { backgroundColor: deskColorMap.get(entry!.deskCode)!.bg, color: deskColorMap.get(entry!.deskCode)!.text, borderColor: deskColorMap.get(entry!.deskCode)!.bg }
+                                                    : { backgroundColor: '#f1f5f9', color: '#94a3b8', borderColor: '#e2e8f0' }
+                                                }
+                                              >
+                                                {entry!.deskCode || "—"}
+                                              </button>
+                                            );
+                                          }
                                           return (
-                                            <button
-                                              className={`text-[9px] font-bold font-mono rounded px-1 py-0.5 leading-tight text-center border transition-colors hover:opacity-80 w-full ${hasDeskClash ? 'ring-1 ring-red-500 bg-red-50 text-red-700 border-red-300' : ''}`}
-                                              style={hasDeskClash ? undefined
-                                                : missingDesk ? { backgroundColor: '#7f1d1d', color: '#fef2f2', borderColor: '#991b1b' }
-                                                : entry!.deskCode && deskColorMap.get(entry!.deskCode)
-                                                  ? { backgroundColor: deskColorMap.get(entry!.deskCode)!.bg, color: deskColorMap.get(entry!.deskCode)!.text, borderColor: deskColorMap.get(entry!.deskCode)!.bg }
-                                                  : { backgroundColor: '#f1f5f9', color: '#94a3b8', borderColor: '#e2e8f0' }
-                                              }
-                                            >
-                                              {entry!.deskCode || "—"}
+                                            <button className="w-full h-4 flex items-center justify-center text-muted-foreground/20 hover:text-muted-foreground/50 hover:bg-muted/30 rounded transition-colors text-[9px] font-mono">
+                                              —
                                             </button>
                                           );
-                                        }
-                                        // No shift — show a very subtle desk trigger so users can pre-assign a desk too
-                                        return (
-                                          <button className="w-full h-4 flex items-center justify-center text-muted-foreground/20 hover:text-muted-foreground/50 hover:bg-muted/30 rounded transition-colors text-[9px] font-mono">
-                                            —
-                                          </button>
-                                        );
-                                      })()}
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-52 p-2" side="bottom">
-                                      <div className="text-xs font-semibold text-muted-foreground mb-2">
-                                        {hasDeskClash && (
-                                          <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-2 py-1 mb-2">
-                                            ⚠ Desk clash — same desk assigned to multiple people
-                                          </div>
-                                        )}
-                                        Desk
-                                      </div>
-                                      <div className="grid grid-cols-2 gap-1 max-h-48 overflow-y-auto">
-                                        {allDeskCodes.map(({ code }) => {
-                                          const color = deskColorMap.get(code);
-                                          const isActive = code === entry?.deskCode;
-                                          return (
-                                            <button
-                                              key={code}
-                                              onClick={() => handleSetDesk(entry?.id, emp.id, dateStr, code)}
-                                              className={`text-xs font-bold font-mono px-2 py-1.5 rounded border transition-colors hover:opacity-80 ${isActive ? 'ring-2 ring-offset-1' : ''}`}
-                                              style={color ? { backgroundColor: color.bg, color: color.text, borderColor: color.border } : undefined}
+                                        })()}
+                                      </PopoverTrigger>
+                                      <PopoverContent className="w-52 p-2" side="bottom">
+                                        <div className="text-xs font-semibold text-muted-foreground mb-2">
+                                          {hasDeskClash && (
+                                            <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-2 py-1 mb-2">
+                                              ⚠ Desk clash — same desk assigned to multiple people
+                                            </div>
+                                          )}
+                                          Desk
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-1 max-h-48 overflow-y-auto">
+                                          {allDeskCodes.map(({ code }) => {
+                                            const color = deskColorMap.get(code);
+                                            const isActive = code === entry?.deskCode;
+                                            return (
+                                              <button
+                                                key={code}
+                                                onClick={() => handleSetDesk(entry?.id, emp.id, dateStr, code)}
+                                                className={`text-xs font-bold font-mono px-2 py-1.5 rounded border transition-colors hover:opacity-80 ${isActive ? 'ring-2 ring-offset-1' : ''}`}
+                                                style={color ? { backgroundColor: color.bg, color: color.text, borderColor: color.border } : undefined}
+                                              >
+                                                {code}
+                                              </button>
+                                            );
+                                          })}
+                                          {entry?.deskCode && (
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              className="text-destructive text-xs col-span-2"
+                                              onClick={() => handleSetDesk(entry!.id, emp.id, dateStr, null)}
                                             >
-                                              {code}
-                                            </button>
-                                          );
-                                        })}
-                                        {entry?.deskCode && (
-                                          <Button
-                                            size="sm"
-                                            variant="outline"
-                                            className="text-destructive text-xs col-span-2"
-                                            onClick={() => handleSetDesk(entry!.id, emp.id, dateStr, null)}
+                                              Clear desk
+                                            </Button>
+                                          )}
+                                        </div>
+                                      </PopoverContent>
+                                    </Popover>
+                                  ) : (
+                                    <div
+                                      className={`text-[9px] font-bold font-mono rounded px-1 py-0.5 leading-tight text-center border w-full ${hasShift ? '' : 'opacity-0'}`}
+                                      style={hasShift && entry?.deskCode && deskColorMap.get(entry.deskCode) ? { backgroundColor: deskColorMap.get(entry.deskCode)!.bg, color: deskColorMap.get(entry.deskCode)!.text, borderColor: deskColorMap.get(entry.deskCode)!.border } : { backgroundColor: '#f1f5f9', color: '#94a3b8', borderColor: '#e2e8f0' }}
+                                    >
+                                      {entry?.deskCode ?? "—"}
+                                    </div>
+                                  )}
+
+                                  {/* ── Demand row ── */}
+                                  <div data-pdf-hide>
+                                  {isAdmin ? (
+                                    demand ? (
+                                      <Popover>
+                                        <PopoverTrigger asChild>
+                                          <button
+                                            className={`text-[9px] font-bold font-mono rounded px-1 py-0.5 leading-tight text-center border transition-colors hover:opacity-80 w-full flex items-center justify-center gap-0.5 ${
+                                              demand.status === "approved"
+                                                ? "bg-green-50 text-green-700 border-green-300"
+                                                : demand.status === "rejected"
+                                                ? "bg-red-50 text-red-600 border-red-200 line-through opacity-60"
+                                                : "bg-yellow-50 text-yellow-700 border-yellow-300"
+                                            }`}
                                           >
-                                            Clear desk
-                                          </Button>
+                                            {demand.status === "approved" && <Check className="h-2 w-2 flex-shrink-0" />}
+                                            {demand.status === "rejected" && <X className="h-2 w-2 flex-shrink-0" />}
+                                            {demand.demandCode}
+                                          </button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-44 p-2" side="bottom">
+                                          <div className="text-xs font-semibold text-muted-foreground mb-2">
+                                            Demand: {demand.demandCode}
+                                          </div>
+                                          <div className="flex gap-1">
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              className="flex-1 text-xs text-green-700 border-green-400 hover:bg-green-50"
+                                              onClick={() => handleDecision(demand.id, "approved")}
+                                            >
+                                              <Check className="h-3 w-3 mr-1" /> Approve
+                                            </Button>
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              className="flex-1 text-xs text-red-700 border-red-400 hover:bg-red-50"
+                                              onClick={() => handleDecision(demand.id, "rejected")}
+                                            >
+                                              <X className="h-3 w-3 mr-1" /> Reject
+                                            </Button>
+                                          </div>
+                                        </PopoverContent>
+                                      </Popover>
+                                    ) : (
+                                      <div className="h-4" />
+                                    )
+                                  ) : canAddDemand ? (
+                                    <Popover>
+                                      <PopoverTrigger asChild>
+                                        {demand ? (
+                                          <button
+                                            className={`text-[9px] font-bold font-mono rounded px-1 py-0.5 leading-tight text-center border transition-colors hover:opacity-80 w-full flex items-center justify-center gap-0.5 ${
+                                              demand.status === "approved"
+                                                ? "bg-green-50 text-green-700 border-green-300"
+                                                : demand.status === "rejected"
+                                                ? "bg-red-50 text-red-600 border-red-200 line-through opacity-60"
+                                                : "bg-yellow-50 text-yellow-700 border-yellow-300"
+                                            }`}
+                                          >
+                                            {demand.status === "approved" && <Check className="h-2 w-2 flex-shrink-0" />}
+                                            {demand.status === "rejected" && <X className="h-2 w-2 flex-shrink-0" />}
+                                            {demand.demandCode}
+                                          </button>
+                                        ) : (
+                                          <button className="w-full h-4 flex items-center justify-center text-muted-foreground/20 hover:text-purple-400/60 hover:bg-purple-50/30 rounded transition-colors text-[9px] font-mono">
+                                            req
+                                          </button>
                                         )}
-                                      </div>
-                                    </PopoverContent>
-                                  </Popover>
+                                      </PopoverTrigger>
+                                      <PopoverContent className="w-52 p-2" side="bottom">
+                                        <div className="text-xs font-semibold text-muted-foreground mb-2">
+                                          Request Shift
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-1">
+                                          {shiftCodes?.map(sc => {
+                                            const s = getShiftStyle(sc.code);
+                                            const isActive = sc.code === demand?.demandCode;
+                                            return (
+                                              <button
+                                                key={sc.code}
+                                                onClick={() => handleSetDemand(emp.id, dayNum, sc.code)}
+                                                className={`text-xs font-semibold px-2 py-1.5 rounded border transition-colors hover:opacity-80 ${isActive ? 'ring-2 ring-offset-1' : ''}`}
+                                                style={s ? { backgroundColor: s.bg, color: s.text, borderColor: s.border } : undefined}
+                                              >
+                                                {sc.code}
+                                              </button>
+                                            );
+                                          })}
+                                          {demand && (
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              className="text-destructive text-xs col-span-2"
+                                              onClick={() => handleDeleteDemand(demand.id)}
+                                            >
+                                              Remove request
+                                            </Button>
+                                          )}
+                                        </div>
+                                      </PopoverContent>
+                                    </Popover>
+                                  ) : (
+                                    <div className="h-4" />
+                                  )}
+                                  </div>
                                 </div>
                               )}
                             </td>

@@ -1,3 +1,4 @@
+import { requireAdmin } from "../middleware/auth.js";
 import { Router } from "express";
 import * as XLSX from "xlsx";
 import multer from "multer";
@@ -64,7 +65,7 @@ function buildSheet(
 
 // ── EXPORT ───────────────────────────────────────────────────────────────────
 
-router.get("/planning/excel-export", async (req, res): Promise<void> => {
+router.get("/planning/excel-export", requireAdmin, async (req, res): Promise<void> => {
   const year = parseInt(req.query.year as string, 10);
   const monthParam = req.query.month ? parseInt(req.query.month as string, 10) : null;
 
@@ -147,7 +148,7 @@ router.get("/planning/excel-export", async (req, res): Promise<void> => {
 
 // ── IMPORT ───────────────────────────────────────────────────────────────────
 
-router.post("/planning/excel-import", upload.single("file"), async (req, res): Promise<void> => {
+router.post("/planning/excel-import", requireAdmin, upload.single("file"), async (req, res): Promise<void> => {
   if (!req.file) {
     res.status(400).json({ error: "No file uploaded" });
     return;

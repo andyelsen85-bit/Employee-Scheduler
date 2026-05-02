@@ -8,6 +8,8 @@ servers:
     description: Base API path
 tags:
   - name: health
+  - name: auth
+  - name: users
   - name: departments
   - name: employees
   - name: offices
@@ -17,6 +19,8 @@ tags:
   - name: holidays
   - name: planning
   - name: dashboard
+  - name: demands
+  - name: mailSettings
 
 paths:
   /healthz:
@@ -779,6 +783,263 @@ paths:
               schema:
                 $ref: "#/components/schemas/DashboardSummary"
 
+  # ── AUTH ─────────────────────────────────────────────────────────────────
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Log in and create a session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginBody"
+      responses:
+        "200":
+          description: Authenticated user info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthUser"
+        "401":
+          description: Invalid credentials
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Destroy the current session
+      responses:
+        "204":
+          description: Logged out
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get currently authenticated user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthUser"
+        "401":
+          description: Not authenticated
+
+  # ── USERS (admin only) ───────────────────────────────────────────────────
+  /users:
+    get:
+      operationId: listUsers
+      tags: [users]
+      summary: List all system users (admin only)
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SystemUser"
+    post:
+      operationId: createUser
+      tags: [users]
+      summary: Create a new user (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserBody"
+      responses:
+        "201":
+          description: Created user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemUser"
+
+  /users/{id}:
+    patch:
+      operationId: updateUser
+      tags: [users]
+      summary: Update a user (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserBody"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemUser"
+    delete:
+      operationId: deleteUser
+      tags: [users]
+      summary: Delete a user (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # ── DEMANDS ──────────────────────────────────────────────────────────────
+  /demands:
+    get:
+      operationId: listDemands
+      tags: [demands]
+      summary: List shift demands for a given month
+      parameters:
+        - name: year
+          in: query
+          required: true
+          schema:
+            type: integer
+        - name: month
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of demands with decisions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DemandWithDecision"
+    post:
+      operationId: createDemand
+      tags: [demands]
+      summary: Create or update a shift demand
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDemandBody"
+      responses:
+        "201":
+          description: Created/updated demand
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Demand"
+        "400":
+          description: Validation error (past month, locked month, locked day)
+
+  /demands/{id}:
+    delete:
+      operationId: deleteDemand
+      tags: [demands]
+      summary: Delete a demand
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /demands/{id}/decision:
+    patch:
+      operationId: decideDemand
+      tags: [demands]
+      summary: Approve or reject a demand (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DemandDecisionBody"
+      responses:
+        "200":
+          description: Updated demand and decision record
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  demand:
+                    $ref: "#/components/schemas/Demand"
+                  decision:
+                    $ref: "#/components/schemas/DemandDecision"
+
+  # ── MAIL SETTINGS (admin only) ───────────────────────────────────────────
+  /settings/mail:
+    get:
+      operationId: getMailSettings
+      tags: [mailSettings]
+      summary: Get SMTP mail settings (admin only)
+      responses:
+        "200":
+          description: Mail settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MailSettings"
+    put:
+      operationId: updateMailSettings
+      tags: [mailSettings]
+      summary: Update SMTP mail settings (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MailSettings"
+      responses:
+        "200":
+          description: Updated mail settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MailSettings"
+
+  /settings/mail/test:
+    post:
+      operationId: testMailSettings
+      tags: [mailSettings]
+      summary: Send a test email (admin only)
+      responses:
+        "200":
+          description: Test result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+
 # ── COMPONENTS ──────────────────────────────────────────────────────────────
 components:
   schemas:
@@ -788,6 +1049,184 @@ components:
         status:
           type: string
       required: [status]
+
+    # AUTH
+    LoginBody:
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+      required: [username, password]
+
+    AuthUser:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        role:
+          type: string
+        employeeId:
+          type: integer
+          nullable: true
+      required: [id, username, role]
+
+    # USERS
+    SystemUser:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        role:
+          type: string
+        employeeId:
+          type: integer
+          nullable: true
+        isLegacy:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, username, role, isLegacy, createdAt]
+
+    CreateUserBody:
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+        role:
+          type: string
+          enum: [admin, user]
+        employeeId:
+          type: integer
+          nullable: true
+      required: [username, password, role]
+
+    UpdateUserBody:
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+        role:
+          type: string
+          enum: [admin, user]
+        employeeId:
+          type: integer
+          nullable: true
+
+    # DEMANDS
+    Demand:
+      type: object
+      properties:
+        id:
+          type: integer
+        employeeId:
+          type: integer
+        year:
+          type: integer
+        month:
+          type: integer
+        day:
+          type: integer
+        demandCode:
+          type: string
+        status:
+          type: string
+          enum: [pending, approved, rejected]
+        notifiedAt:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, employeeId, year, month, day, demandCode, status]
+
+    DemandDecision:
+      type: object
+      properties:
+        id:
+          type: integer
+        demandId:
+          type: integer
+        adminId:
+          type: integer
+          nullable: true
+        decision:
+          type: string
+          enum: [approved, rejected]
+        notifiedAt:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, demandId, decision]
+
+    DemandWithDecision:
+      allOf:
+        - $ref: "#/components/schemas/Demand"
+        - type: object
+          properties:
+            decision:
+              $ref: "#/components/schemas/DemandDecision"
+              nullable: true
+
+    CreateDemandBody:
+      type: object
+      properties:
+        employeeId:
+          type: integer
+        year:
+          type: integer
+        month:
+          type: integer
+        day:
+          type: integer
+        demandCode:
+          type: string
+      required: [employeeId, year, month, day, demandCode]
+
+    DemandDecisionBody:
+      type: object
+      properties:
+        decision:
+          type: string
+          enum: [approved, rejected]
+      required: [decision]
+
+    # MAIL SETTINGS
+    MailSettings:
+      type: object
+      properties:
+        host:
+          type: string
+          nullable: true
+        port:
+          type: integer
+          nullable: true
+        secure:
+          type: boolean
+          nullable: true
+        username:
+          type: string
+          nullable: true
+        password:
+          type: string
+          nullable: true
+        fromAddress:
+          type: string
+          nullable: true
+        enabled:
+          type: boolean
 
     # DEPARTMENT
     Department:
@@ -907,6 +1346,18 @@ components:
         displayOrder:
           type: integer
           description: "Manual sort order for the planning view. Lower numbers appear first within a department group."
+        role:
+          type: string
+          nullable: true
+          description: "Employee organisational role (e.g. analyst, manager, team lead)"
+        email:
+          type: string
+          nullable: true
+          description: "Employee email address (used for demand notifications)"
+        approverAdminId:
+          type: integer
+          nullable: true
+          description: "ID of the admin user who approves demands for this employee"
         notes:
           type: string
           nullable: true
@@ -1061,6 +1512,18 @@ components:
         displayOrder:
           type: integer
           description: "Manual sort order within the planning view group."
+        role:
+          type: string
+          nullable: true
+          description: "Employee organisational role (e.g. analyst, manager, team lead)"
+        email:
+          type: string
+          nullable: true
+          description: "Employee email address"
+        approverAdminId:
+          type: integer
+          nullable: true
+          description: "ID of the admin user who approves demands for this employee"
         notes:
           type: string
           nullable: true
@@ -1175,11 +1638,14 @@ components:
           description: "onsite | homework | cowork | holiday | jl | other"
         isActive:
           type: boolean
+        scalesWithContract:
+          type: boolean
+          description: "Whether planned hours scale with the employee contract percentage"
         color:
           type: string
           nullable: true
           description: "Custom hex color for this shift code in the planning view (overrides type default)"
-      required: [code, label, hours, type, isActive]
+      required: [code, label, hours, type, isActive, scalesWithContract]
 
     CreateShiftCodeBody:
       type: object
@@ -1193,6 +1659,8 @@ components:
         type:
           type: string
         isActive:
+          type: boolean
+        scalesWithContract:
           type: boolean
         color:
           type: string
@@ -1209,6 +1677,8 @@ components:
         type:
           type: string
         isActive:
+          type: boolean
+        scalesWithContract:
           type: boolean
         color:
           type: string

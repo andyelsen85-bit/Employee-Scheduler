@@ -9,6 +9,128 @@ export interface HealthStatus {
   status: string;
 }
 
+export interface LoginBody {
+  username: string;
+  password: string;
+}
+
+export interface AuthUser {
+  id: number;
+  username: string;
+  role: string;
+  employeeId?: number | null;
+}
+
+export interface SystemUser {
+  id: number;
+  username: string;
+  role: string;
+  employeeId?: number | null;
+  isLegacy: boolean;
+  createdAt: string;
+}
+
+export type CreateUserBodyRole =
+  (typeof CreateUserBodyRole)[keyof typeof CreateUserBodyRole];
+
+export const CreateUserBodyRole = {
+  admin: "admin",
+  user: "user",
+} as const;
+
+export interface CreateUserBody {
+  username: string;
+  password: string;
+  role: CreateUserBodyRole;
+  employeeId?: number | null;
+}
+
+export type UpdateUserBodyRole =
+  (typeof UpdateUserBodyRole)[keyof typeof UpdateUserBodyRole];
+
+export const UpdateUserBodyRole = {
+  admin: "admin",
+  user: "user",
+} as const;
+
+export interface UpdateUserBody {
+  username?: string;
+  password?: string;
+  role?: UpdateUserBodyRole;
+  employeeId?: number | null;
+}
+
+export type DemandStatus = (typeof DemandStatus)[keyof typeof DemandStatus];
+
+export const DemandStatus = {
+  pending: "pending",
+  approved: "approved",
+  rejected: "rejected",
+} as const;
+
+export interface Demand {
+  id: number;
+  employeeId: number;
+  year: number;
+  month: number;
+  day: number;
+  demandCode: string;
+  status: DemandStatus;
+  notifiedAt?: string | null;
+  createdAt?: string;
+}
+
+export type DemandDecisionDecision =
+  (typeof DemandDecisionDecision)[keyof typeof DemandDecisionDecision];
+
+export const DemandDecisionDecision = {
+  approved: "approved",
+  rejected: "rejected",
+} as const;
+
+export interface DemandDecision {
+  id: number;
+  demandId: number;
+  adminId?: number | null;
+  decision: DemandDecisionDecision;
+  notifiedAt?: string | null;
+  createdAt?: string;
+}
+
+export type DemandWithDecision = Demand & {
+  decision?: DemandDecision | null;
+};
+
+export interface CreateDemandBody {
+  employeeId: number;
+  year: number;
+  month: number;
+  day: number;
+  demandCode: string;
+}
+
+export type DemandDecisionBodyDecision =
+  (typeof DemandDecisionBodyDecision)[keyof typeof DemandDecisionBodyDecision];
+
+export const DemandDecisionBodyDecision = {
+  approved: "approved",
+  rejected: "rejected",
+} as const;
+
+export interface DemandDecisionBody {
+  decision: DemandDecisionBodyDecision;
+}
+
+export interface MailSettings {
+  host?: string | null;
+  port?: number | null;
+  secure?: boolean | null;
+  username?: string | null;
+  password?: string | null;
+  fromAddress?: string | null;
+  enabled?: boolean;
+}
+
 export interface Department {
   id: number;
   name: string;
@@ -72,6 +194,12 @@ export interface Employee {
   onsiteWeekRatio?: number | null;
   /** Manual sort order for the planning view. Lower numbers appear first within a department group. */
   displayOrder: number;
+  /** Employee organisational role (e.g. analyst, manager, team lead) */
+  role?: string | null;
+  /** Employee email address (used for demand notifications) */
+  email?: string | null;
+  /** ID of the admin user who approves demands for this employee */
+  approverAdminId?: number | null;
   notes?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -130,6 +258,12 @@ export interface UpdateEmployeeBody {
   onsiteWeekRatio?: number | null;
   /** Manual sort order within the planning view group. */
   displayOrder?: number;
+  /** Employee organisational role (e.g. analyst, manager, team lead) */
+  role?: string | null;
+  /** Employee email address */
+  email?: string | null;
+  /** ID of the admin user who approves demands for this employee */
+  approverAdminId?: number | null;
   notes?: string | null;
 }
 
@@ -182,10 +316,10 @@ export interface ShiftCode {
   /** onsite | homework | cowork | holiday | jl | other */
   type: string;
   isActive: boolean;
+  /** Whether planned hours scale with the employee contract percentage */
+  scalesWithContract: boolean;
   /** Custom hex color for this shift code in the planning view (overrides type default) */
   color?: string | null;
-  /** When true, hours are multiplied by the employee's contract percentage */
-  scalesWithContract?: boolean;
 }
 
 export interface CreateShiftCodeBody {
@@ -194,8 +328,8 @@ export interface CreateShiftCodeBody {
   hours: number;
   type: string;
   isActive?: boolean;
-  color?: string | null;
   scalesWithContract?: boolean;
+  color?: string | null;
 }
 
 export interface UpdateShiftCodeBody {
@@ -203,8 +337,8 @@ export interface UpdateShiftCodeBody {
   hours?: number;
   type?: string;
   isActive?: boolean;
-  color?: string | null;
   scalesWithContract?: boolean;
+  color?: string | null;
 }
 
 export interface TemplateDayEntry {
@@ -366,4 +500,19 @@ export type ListHolidaysParams = {
 export type GetDashboardSummaryParams = {
   year?: number;
   month?: number;
+};
+
+export type ListDemandsParams = {
+  year: number;
+  month: number;
+};
+
+export type DecideDemand200 = {
+  demand?: Demand;
+  decision?: DemandDecision;
+};
+
+export type TestMailSettings200 = {
+  success?: boolean;
+  message?: string;
 };

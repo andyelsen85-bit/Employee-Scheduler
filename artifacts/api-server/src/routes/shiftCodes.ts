@@ -1,3 +1,4 @@
+import { requireAdmin } from "../middleware/auth.js";
 import { Router } from "express";
 import { eq } from "drizzle-orm";
 import { db, shiftCodesTable } from "@workspace/db";
@@ -15,7 +16,7 @@ router.get("/shift-codes", async (_req, res): Promise<void> => {
   res.json(rows);
 });
 
-router.post("/shift-codes", async (req, res): Promise<void> => {
+router.post("/shift-codes", requireAdmin, async (req, res): Promise<void> => {
   const parsed = CreateShiftCodeBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -33,7 +34,7 @@ router.post("/shift-codes", async (req, res): Promise<void> => {
   res.status(201).json(row);
 });
 
-router.put("/shift-codes/:code", async (req, res): Promise<void> => {
+router.put("/shift-codes/:code", requireAdmin, async (req, res): Promise<void> => {
   const params = UpdateShiftCodeParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -64,7 +65,7 @@ router.put("/shift-codes/:code", async (req, res): Promise<void> => {
   res.json(row);
 });
 
-router.delete("/shift-codes/:code", async (req, res): Promise<void> => {
+router.delete("/shift-codes/:code", requireAdmin, async (req, res): Promise<void> => {
   const params = DeleteShiftCodeParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });

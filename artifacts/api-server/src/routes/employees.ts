@@ -1,3 +1,4 @@
+import { requireAdmin } from "../middleware/auth.js";
 import { Router } from "express";
 import { eq } from "drizzle-orm";
 import { db, employeesTable } from "@workspace/db";
@@ -18,7 +19,7 @@ router.get("/employees", async (_req, res): Promise<void> => {
   res.json(rows);
 });
 
-router.post("/employees", async (req, res): Promise<void> => {
+router.post("/employees", requireAdmin, async (req, res): Promise<void> => {
   const parsed = CreateEmployeeBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -69,7 +70,7 @@ router.get("/employees/:id", async (req, res): Promise<void> => {
   res.json(row);
 });
 
-router.put("/employees/:id", async (req, res): Promise<void> => {
+router.put("/employees/:id", requireAdmin, async (req, res): Promise<void> => {
   const params = UpdateEmployeeParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -101,6 +102,9 @@ router.put("/employees/:id", async (req, res): Promise<void> => {
   if (data.onsiteWeekRatio !== undefined) updateData.onsiteWeekRatio = data.onsiteWeekRatio ?? null;
   if (data.displayOrder !== undefined) updateData.displayOrder = data.displayOrder;
   if (data.notes !== undefined) updateData.notes = data.notes ?? null;
+  if (data.role !== undefined) updateData.role = data.role ?? null;
+  if (data.email !== undefined) updateData.email = data.email ?? null;
+  if (data.approverAdminId !== undefined) updateData.approverAdminId = data.approverAdminId ?? null;
 
   const [row] = await db
     .update(employeesTable)
@@ -114,7 +118,7 @@ router.put("/employees/:id", async (req, res): Promise<void> => {
   res.json(row);
 });
 
-router.delete("/employees/:id", async (req, res): Promise<void> => {
+router.delete("/employees/:id", requireAdmin, async (req, res): Promise<void> => {
   const params = DeleteEmployeeParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -131,7 +135,7 @@ router.delete("/employees/:id", async (req, res): Promise<void> => {
   res.sendStatus(204);
 });
 
-router.put("/employees/:id/counters", async (req, res): Promise<void> => {
+router.put("/employees/:id/counters", requireAdmin, async (req, res): Promise<void> => {
   const params = UpdateEmployeeCountersParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });

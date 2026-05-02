@@ -13,9 +13,14 @@ import { permanenceRouter } from "./permanence.js";
 import backupRouter from "./backup.js";
 import { spocRotationRouter } from "./spocRotation.js";
 import excelPlanningRouter from "./excelPlanning.js";
+import authRouter from "./auth.js";
+import usersRouter from "./users.js";
+import demandsRouter from "./demands.js";
+import mailSettingsRouter from "./mailSettings.js";
 
 const router: IRouter = Router();
 
+router.use(authRouter);
 router.use(healthRouter);
 router.use(departmentsRouter);
 router.use(employeesRouter);
@@ -30,5 +35,8 @@ router.use("/permanence", permanenceRouter);
 router.use(backupRouter);
 router.use(spocRotationRouter);
 router.use(excelPlanningRouter);
+router.use(usersRouter);
+router.use(demandsRouter);
+router.use(mailSettingsRouter);
 
 export default router;

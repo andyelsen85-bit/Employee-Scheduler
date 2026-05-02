@@ -1,3 +1,4 @@
+import { requireAdmin } from "../middleware/auth.js";
 import { Router } from "express";
 import { eq } from "drizzle-orm";
 import { db, publicHolidaysTable } from "@workspace/db";
@@ -21,7 +22,7 @@ router.get("/holidays", async (req, res): Promise<void> => {
   res.json(rows);
 });
 
-router.post("/holidays", async (req, res): Promise<void> => {
+router.post("/holidays", requireAdmin, async (req, res): Promise<void> => {
   const parsed = CreateHolidayBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -34,7 +35,7 @@ router.post("/holidays", async (req, res): Promise<void> => {
   res.status(201).json(row);
 });
 
-router.put("/holidays/:id", async (req, res): Promise<void> => {
+router.put("/holidays/:id", requireAdmin, async (req, res): Promise<void> => {
   const params = UpdateHolidayParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -57,7 +58,7 @@ router.put("/holidays/:id", async (req, res): Promise<void> => {
   res.json(row);
 });
 
-router.delete("/holidays/:id", async (req, res): Promise<void> => {
+router.delete("/holidays/:id", requireAdmin, async (req, res): Promise<void> => {
   const params = DeleteHolidayParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });

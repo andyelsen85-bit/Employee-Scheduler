@@ -1,3 +1,4 @@
+import { requireAdmin } from "../middleware/auth.js";
 import { Router } from "express";
 import { eq, and } from "drizzle-orm";
 import { db, monthlyConfigsTable } from "@workspace/db";
@@ -39,7 +40,7 @@ router.get("/monthly-configs/:year/:month", async (req, res): Promise<void> => {
   res.json(row);
 });
 
-router.put("/monthly-configs/:year/:month", async (req, res): Promise<void> => {
+router.put("/monthly-configs/:year/:month", requireAdmin, async (req, res): Promise<void> => {
   const params = UpsertMonthlyConfigParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });

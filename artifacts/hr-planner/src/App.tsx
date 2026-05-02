@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Login from "@/pages/login";
-import { isAuthenticated } from "@/hooks/use-auth";
+import { AuthProvider, useAuth } from "@/context/auth-context";
 
 import Dashboard from "@/pages/dashboard";
 import Planning from "@/pages/planning";
@@ -20,20 +20,15 @@ import Permanence from "@/pages/permanence";
 import BackupRestore from "@/pages/config-backup";
 import ExcelExportImport from "@/pages/config-excel";
 import SpocRotation from "@/pages/spoc-rotation";
+import UsersPage from "@/pages/users";
+import MailSettingsPage from "@/pages/config-mail";
 
 const queryClient = new QueryClient();
 
-function Router() {
+function AdminRoutes() {
   return (
-    <Switch>
+    <>
       <Route path="/" component={Dashboard} />
-      <Route path="/planning">
-        {() => {
-          const date = new Date();
-          return <Redirect to={`/planning/${date.getFullYear()}/${date.getMonth() + 1}`} />;
-        }}
-      </Route>
-      <Route path="/planning/:year/:month" component={Planning} />
       <Route path="/employees" component={Employees} />
       <Route path="/employees/:id" component={EmployeeDetail} />
       <Route path="/config/offices" component={OfficesConfig} />
@@ -45,16 +40,50 @@ function Router() {
       <Route path="/config/backup" component={BackupRestore} />
       <Route path="/config/excel" component={ExcelExportImport} />
       <Route path="/spoc-rotation/:year" component={SpocRotation} />
+      <Route path="/users" component={UsersPage} />
+      <Route path="/config/mail" component={MailSettingsPage} />
+    </>
+  );
+}
+
+function Router() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+
+  return (
+    <Switch>
+      <Route path="/planning">
+        {() => {
+          const date = new Date();
+          return <Redirect to={`/planning/${date.getFullYear()}/${date.getMonth() + 1}`} />;
+        }}
+      </Route>
+      <Route path="/planning/:year/:month" component={Planning} />
+      {isAdmin && <AdminRoutes />}
+      {!isAdmin && <Route path="/">
+        {() => {
+          const date = new Date();
+          return <Redirect to={`/planning/${date.getFullYear()}/${date.getMonth() + 1}`} />;
+        }}
+      </Route>}
       <Route component={NotFound} />
     </Switch>
   );
 }
 
-function App() {
-  const [authed, setAuthed] = useState(() => isAuthenticated());
+function AppInner() {
+  const { user, loading, setUser } = useAuth();
 
-  if (!authed) {
-    return <Login onSuccess={() => setAuthed(true)} />;
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-950">
+        <div className="text-white text-sm">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Login onSuccess={(u) => setUser(u)} />;
   }
 
   return (
@@ -66,6 +95,14 @@ function App() {
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppInner />
+    </AuthProvider>
   );
 }
 

@@ -1,3 +1,4 @@
+import { requireAdmin } from "../middleware/auth.js";
 import { Router } from "express";
 import { eq } from "drizzle-orm";
 import { db, officesTable, officeEmployeesTable } from "@workspace/db";
@@ -31,7 +32,7 @@ router.get("/offices", async (_req, res): Promise<void> => {
   res.json(await getOfficesWithEmployees());
 });
 
-router.post("/offices", async (req, res): Promise<void> => {
+router.post("/offices", requireAdmin, async (req, res): Promise<void> => {
   const parsed = CreateOfficeBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -64,7 +65,7 @@ router.post("/offices", async (req, res): Promise<void> => {
   });
 });
 
-router.put("/offices/:id", async (req, res): Promise<void> => {
+router.put("/offices/:id", requireAdmin, async (req, res): Promise<void> => {
   const params = UpdateOfficeParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -106,7 +107,7 @@ router.put("/offices/:id", async (req, res): Promise<void> => {
   });
 });
 
-router.delete("/offices/:id", async (req, res): Promise<void> => {
+router.delete("/offices/:id", requireAdmin, async (req, res): Promise<void> => {
   const params = UpdateOfficeParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -124,7 +125,7 @@ router.delete("/offices/:id", async (req, res): Promise<void> => {
   res.sendStatus(204);
 });
 
-router.put("/offices/:id/employees", async (req, res): Promise<void> => {
+router.put("/offices/:id/employees", requireAdmin, async (req, res): Promise<void> => {
   const params = UpdateOfficeEmployeesParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });

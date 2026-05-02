@@ -47,6 +47,9 @@ export const employeesTable = pgTable("employees", {
   onsiteWeekRatio: real("onsite_week_ratio"),
   displayOrder: integer("display_order").notNull().default(0),
   notes: text("notes"),
+  role: text("role"),
+  email: text("email"),
+  approverAdminId: integer("approver_admin_id"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

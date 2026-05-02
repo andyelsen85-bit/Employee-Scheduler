@@ -1,3 +1,4 @@
+import { requireAdmin } from "../middleware/auth.js";
 import { Router } from "express";
 import { eq, and } from "drizzle-orm";
 import { db, weekTemplatesTable } from "@workspace/db";
@@ -26,7 +27,7 @@ router.get("/employees/:id/templates", async (req, res): Promise<void> => {
   res.json(rows);
 });
 
-router.post("/employees/:id/templates", async (req, res): Promise<void> => {
+router.post("/employees/:id/templates", requireAdmin, async (req, res): Promise<void> => {
   const params = CreateWeekTemplateParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -48,7 +49,7 @@ router.post("/employees/:id/templates", async (req, res): Promise<void> => {
   res.status(201).json(row);
 });
 
-router.put("/templates/:id", async (req, res): Promise<void> => {
+router.put("/templates/:id", requireAdmin, async (req, res): Promise<void> => {
   const params = UpdateWeekTemplateParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -75,7 +76,7 @@ router.put("/templates/:id", async (req, res): Promise<void> => {
   res.json(row);
 });
 
-router.delete("/templates/:id", async (req, res): Promise<void> => {
+router.delete("/templates/:id", requireAdmin, async (req, res): Promise<void> => {
   const params = DeleteWeekTemplateParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });

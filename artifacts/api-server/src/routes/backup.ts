@@ -1,3 +1,4 @@
+import { requireAdmin } from "../middleware/auth.js";
 import { Router } from "express";
 import { db, pool } from "@workspace/db";
 import {
@@ -21,7 +22,7 @@ const router = Router();
 
 // ── EXPORT ───────────────────────────────────────────────────────────────────
 
-router.get("/backup/export", async (req, res): Promise<void> => {
+router.get("/backup/export", requireAdmin, async (req, res): Promise<void> => {
   const [
     departments,
     offices,
@@ -80,7 +81,7 @@ router.get("/backup/export", async (req, res): Promise<void> => {
 
 // ── RESTORE ──────────────────────────────────────────────────────────────────
 
-router.post("/backup/restore", async (req, res): Promise<void> => {
+router.post("/backup/restore", requireAdmin, async (req, res): Promise<void> => {
   const body = req.body as Record<string, unknown>;
 
   // Accept version 1 (legacy) and version 2 (adds spocRotationOverrides + appSettings)

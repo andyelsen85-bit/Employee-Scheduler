@@ -25,6 +25,7 @@ import {
   UpdatePlanningEntryBody,
 } from "@workspace/api-zod";
 import { generatePlanning, type PlanningViolation } from "../lib/planner.js";
+import { requireAdmin } from "../middleware/auth.js";
 
 const router = Router();
 
@@ -360,7 +361,7 @@ router.get("/planning/:year/:month", async (req, res): Promise<void> => {
   res.json(await buildMonthResponse(params.data.year, params.data.month));
 });
 
-router.post("/planning/:year/:month/generate", async (req, res): Promise<void> => {
+router.post("/planning/:year/:month/generate", requireAdmin, async (req, res): Promise<void> => {
   const params = GeneratePlanningParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -572,7 +573,7 @@ router.post("/planning/:year/:month/generate", async (req, res): Promise<void> =
   res.json(result);
 });
 
-router.post("/planning/:year/:month/generate/employee/:employeeId", async (req, res): Promise<void> => {
+router.post("/planning/:year/:month/generate/employee/:employeeId", requireAdmin, async (req, res): Promise<void> => {
   const params = GenerateEmployeePlanningParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -772,7 +773,7 @@ router.post("/planning/:year/:month/generate/employee/:employeeId", async (req, 
   res.json(result);
 });
 
-router.post("/planning/:year/:month/confirm", async (req, res): Promise<void> => {
+router.post("/planning/:year/:month/confirm", requireAdmin, async (req, res): Promise<void> => {
   const params = ConfirmPlanningParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -831,9 +832,9 @@ router.post("/planning/:year/:month/confirm", async (req, res): Promise<void> =>
 });
 
 // POST /api/planning/:year/:month/entries — upsert a locked entry for an empty or generated month
-router.post("/planning/:year/:month/entries", async (req, res): Promise<void> => {
-  const year = parseInt(req.params.year, 10);
-  const month = parseInt(req.params.month, 10);
+router.post("/planning/:year/:month/entries", requireAdmin, async (req, res): Promise<void> => {
+  const year = parseInt(String(req.params.year), 10);
+  const month = parseInt(String(req.params.month), 10);
   if (isNaN(year) || isNaN(month)) {
     res.status(400).json({ error: "Invalid year/month" });
     return;
@@ -909,7 +910,7 @@ router.post("/planning/:year/:month/entries", async (req, res): Promise<void> =>
   });
 });
 
-router.put("/planning/entries/:id", async (req, res): Promise<void> => {
+router.put("/planning/entries/:id", requireAdmin, async (req, res): Promise<void> => {
   const params = UpdatePlanningEntryParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -962,9 +963,9 @@ router.put("/planning/entries/:id", async (req, res): Promise<void> => {
 
 // DELETE /api/planning/:year/:month — clear planning back to draft
 // ?keepLocked=true  → delete only unlocked entries (preserves locked/imported entries)
-router.delete("/planning/:year/:month", async (req, res): Promise<void> => {
-  const year = parseInt(req.params.year, 10);
-  const month = parseInt(req.params.month, 10);
+router.delete("/planning/:year/:month", requireAdmin, async (req, res): Promise<void> => {
+  const year = parseInt(String(req.params.year), 10);
+  const month = parseInt(String(req.params.month), 10);
   if (isNaN(year) || isNaN(month)) {
     res.status(400).json({ error: "Invalid year/month" });
     return;

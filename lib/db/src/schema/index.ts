@@ -8,3 +8,6 @@ export * from "./publicHolidays";
 export * from "./planning";
 export * from "./permanence";
 export * from "./spocRotation";
+export * from "./users";
+export * from "./demands";
+export * from "./mailSettings";

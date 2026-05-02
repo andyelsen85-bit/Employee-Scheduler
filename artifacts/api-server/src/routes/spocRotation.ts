@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { db, spocRotationOverridesTable, appSettingsTable, employeesTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
+import { requireAdmin } from "../middleware/auth.js";
 
 export const spocRotationRouter = Router();
 
@@ -34,7 +35,7 @@ spocRotationRouter.get("/settings", async (_req, res) => {
   res.json(settings);
 });
 
-spocRotationRouter.put("/settings", async (req, res) => {
+spocRotationRouter.put("/settings", requireAdmin, async (req, res) => {
   const body = req.body as Record<string, string | null>;
   for (const [key, value] of Object.entries(body)) {
     const existing = await db
@@ -102,9 +103,9 @@ spocRotationRouter.get("/spoc-rotation/:year", async (req, res) => {
 
 // ── manual override for one week ──────────────────────────────────────────────
 
-spocRotationRouter.put("/spoc-rotation/:year/:week", async (req, res) => {
-  const year = parseInt(req.params.year, 10);
-  const week = parseInt(req.params.week, 10);
+spocRotationRouter.put("/spoc-rotation/:year/:week", requireAdmin, async (req, res) => {
+  const year = parseInt(req.params.year as string, 10);
+  const week = parseInt(req.params.week as string, 10);
   const { employeeId } = req.body as { employeeId: number | null };
 
   if (isNaN(year) || isNaN(week)) {
