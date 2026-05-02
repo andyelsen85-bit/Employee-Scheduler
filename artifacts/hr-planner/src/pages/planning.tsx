@@ -704,8 +704,8 @@ export default function Planning() {
                                             const style = !hasViolation ? getShiftStyle(entry!.shiftCode!) : null;
                                             return (
                                               <button
-                                                className={`text-xs font-bold font-mono rounded px-1 py-0.5 leading-tight text-center border transition-colors hover:opacity-80 w-full ${entry!.isLocked ? 'ring-1 ring-amber-400/60' : ''}`}
-                                                style={style ? { backgroundColor: style.bg, color: style.text, borderColor: style.border } : undefined}
+                                                className={`text-xs font-bold font-mono rounded px-1 py-0.5 leading-tight text-center transition-colors hover:opacity-80 w-full ${entry!.isLocked ? 'border-2 border-red-600' : 'border'}`}
+                                                style={style ? { backgroundColor: style.bg, color: style.text, borderColor: entry!.isLocked ? '#dc2626' : style.border } : undefined}
                                               >
                                                 {entry!.shiftCode}
                                               </button>
@@ -755,8 +755,8 @@ export default function Planning() {
                                     </Popover>
                                   ) : (
                                     <div
-                                      className={`text-xs font-bold font-mono rounded px-1 py-0.5 leading-tight text-center border w-full ${hasShift ? '' : 'opacity-0'}`}
-                                      style={hasShift && !hasViolation ? (() => { const s = getShiftStyle(entry!.shiftCode!); return { backgroundColor: s.bg, color: s.text, borderColor: s.border }; })() : undefined}
+                                      className={`text-xs font-bold font-mono rounded px-1 py-0.5 leading-tight text-center w-full ${hasShift ? '' : 'opacity-0'} ${entry?.isLocked ? 'border-2 border-red-600' : 'border'}`}
+                                      style={hasShift && !hasViolation ? (() => { const s = getShiftStyle(entry!.shiftCode!); return { backgroundColor: s.bg, color: s.text, borderColor: entry!.isLocked ? '#dc2626' : s.border }; })() : undefined}
                                     >
                                       {entry?.shiftCode ?? "—"}
                                     </div>
