@@ -232,7 +232,7 @@ export default function UsersPage() {
                 <Label>Linked Employee (optional)</Label>
                 <Select value={form.employeeId} onValueChange={v => setForm(f => ({ ...f, employeeId: v }))}>
                   <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
-                  <SelectContent className="max-h-80">
+                  <SelectContent style={{ maxHeight: "20rem" }}>
                     <SelectItem value="none">None</SelectItem>
                     {employees?.map(e => (
                       <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>
