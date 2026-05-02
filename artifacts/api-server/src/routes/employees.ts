@@ -33,14 +33,29 @@ async function getEmployeeWithBalances(id: number) {
   };
 }
 
-router.get("/employees", async (_req, res): Promise<void> => {
+router.get("/employees", async (req, res): Promise<void> => {
   const rows = await db.select().from(employeesTable).orderBy(employeesTable.name);
-  const balanceRows = await db.select().from(employeeHolidayBalancesTable);
 
   const balancesByEmp: Record<number, { shiftCode: string; balanceHours: number }[]> = {};
-  for (const b of balanceRows) {
-    if (!balancesByEmp[b.employeeId]) balancesByEmp[b.employeeId] = [];
-    balancesByEmp[b.employeeId].push({ shiftCode: b.shiftCodeCode, balanceHours: b.balanceHours });
+  try {
+    const balanceRows = await db.select().from(employeeHolidayBalancesTable);
+    for (const b of balanceRows) {
+      if (!balancesByEmp[b.employeeId]) balancesByEmp[b.employeeId] = [];
+      balancesByEmp[b.employeeId].push({ shiftCode: b.shiftCodeCode, balanceHours: b.balanceHours });
+    }
+  } catch (err) {
+    const e = err as { code?: string; cause?: { code?: string } };
+    const pgCode = e?.code ?? e?.cause?.code;
+    if (pgCode === "42P01") {
+      req.log.warn(
+        { err },
+        "employee_holiday_balances table missing — returning employees without balances",
+      );
+    } else {
+      req.log.error({ err }, "Failed to load employee holiday balances");
+      res.status(500).json({ error: "Failed to load employees" });
+      return;
+    }
   }
 
   res.json(

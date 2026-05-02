@@ -208,7 +208,17 @@ export default function Planning() {
     return groups;
   };
 
-  const employeeGroups = employees && departments ? buildGroups(employees, departments) : null;
+  const allEmployeeGroups = employees && departments ? buildGroups(employees, departments) : null;
+
+  const myEmployee = !isAdmin && user?.employeeId != null
+    ? employees?.find(e => e.id === user.employeeId) ?? null
+    : null;
+
+  const employeeGroups = isAdmin
+    ? allEmployeeGroups
+    : myEmployee
+      ? [{ label: null, emps: [myEmployee] }]
+      : [];
 
   const SHIFT_TYPE_STYLE: Record<string, { bg: string; text: string; border: string }> = {
     onsite:   { bg: "rgba(59,130,246,0.12)",  text: "#1d4ed8", border: "rgba(59,130,246,0.25)" },
@@ -458,12 +468,32 @@ export default function Planning() {
 
   const lockedCount = planning ? planning.entries.filter(e => e.isLocked && e.date.startsWith(currentMonthPrefix)).length : 0;
 
+  if (!isAdmin && user?.employeeId == null) {
+    return (
+      <Layout>
+        <div className="flex flex-col gap-6">
+          <h1 className="text-3xl font-bold tracking-tight">My Planning</h1>
+          <div className="border rounded-xl bg-card p-8 flex flex-col items-center gap-4 text-center">
+            <AlertCircle className="h-10 w-10 text-muted-foreground" />
+            <div>
+              <div className="font-semibold text-lg mb-1">Account not linked to an employee</div>
+              <div className="text-muted-foreground text-sm">
+                Your user account is not linked to any employee record yet.<br />
+                Please contact your HR administrator to have your account linked so you can submit shift requests.
+              </div>
+            </div>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
   return (
     <Layout>
       <div className="flex flex-col gap-6 h-full">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-4">
-            <h1 className="text-3xl font-bold tracking-tight">Planning</h1>
+            <h1 className="text-3xl font-bold tracking-tight">{isAdmin ? "Planning" : "My Planning"}</h1>
             <div className="flex items-center gap-2 bg-card border rounded-lg p-1">
               <Link href={`/planning/${prevYear}/${prevMonth}`}>
                 <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -528,7 +558,16 @@ export default function Planning() {
           </div>
         </div>
 
-        {planning?.violations && planning.violations.length > 0 && (
+        {!isAdmin && (
+          <div className="bg-blue-50 border border-blue-200 text-blue-800 rounded-lg px-4 py-3 text-sm flex items-start gap-2">
+            <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0 text-blue-500" />
+            <span>
+              This is your personal planning view. Click on any day in your row to request a specific shift code — your request will appear as pending until an admin approves or rejects it.
+            </span>
+          </div>
+        )}
+
+        {planning?.violations && planning.violations.length > 0 && isAdmin && (
           <div className="bg-destructive/10 border border-destructive/20 text-destructive p-4 rounded-lg flex flex-col gap-2">
             <div className="flex items-center gap-2 font-bold">
               <AlertCircle className="h-5 w-5" />

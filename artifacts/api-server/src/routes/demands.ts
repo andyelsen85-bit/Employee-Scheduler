@@ -21,10 +21,30 @@ router.get("/demands", requireAuth, async (req, res): Promise<void> => {
   const y = parseInt(year, 10);
   const m = parseInt(month, 10);
 
+  const sessionUserId = req.session.userId!;
+  const [sessionUser] = await db.select().from(usersTable).where(eq(usersTable.id, sessionUserId));
+
+  if (!sessionUser) {
+    res.status(401).json({ error: "Not authenticated" });
+    return;
+  }
+
+  const isAdmin = sessionUser.role === "admin";
+
+  if (!isAdmin && sessionUser.employeeId == null) {
+    res.json([]);
+    return;
+  }
+
+  const baseCondition = and(eq(planningDemandsTable.year, y), eq(planningDemandsTable.month, m));
+  const filterCondition = isAdmin
+    ? baseCondition
+    : and(baseCondition, eq(planningDemandsTable.employeeId, sessionUser.employeeId!));
+
   const demands = await db
     .select()
     .from(planningDemandsTable)
-    .where(and(eq(planningDemandsTable.year, y), eq(planningDemandsTable.month, m)));
+    .where(filterCondition);
 
   const decisionsMap = new Map<number, typeof demandDecisionsTable.$inferSelect>();
 
