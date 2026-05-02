@@ -10,6 +10,7 @@ export const shiftCodesTable = pgTable("shift_codes", {
   isActive: boolean("is_active").notNull().default(true),
   color: text("color"),
   scalesWithContract: boolean("scales_with_contract").notNull().default(false),
+  yearRolloverDefault: real("year_rollover_default"),
 });
 
 export const insertShiftCodeSchema = createInsertSchema(shiftCodesTable);

@@ -29,12 +29,13 @@ const DEFAULT_FORM = {
   isActive: true,
   color: "",
   scalesWithContract: false,
+  yearRolloverDefault: "" as string,
 };
 
 export default function ShiftCodesConfig() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [dialog, setDialog] = useState<null | "create" | { code: string; label: string; hours: number; type: string; isActive: boolean; color?: string | null; scalesWithContract?: boolean }>(null);
+  const [dialog, setDialog] = useState<null | "create" | { code: string; label: string; hours: number; type: string; isActive: boolean; color?: string | null; scalesWithContract?: boolean; yearRolloverDefault?: number | null }>(null);
   const [form, setForm] = useState(DEFAULT_FORM);
 
   const { data: shiftCodes, isLoading } = useListShiftCodes({
@@ -49,7 +50,7 @@ export default function ShiftCodesConfig() {
     setDialog("create");
   };
 
-  type ShiftCode = { code: string; label: string; hours: number; type: string; isActive: boolean; color?: string | null; scalesWithContract?: boolean };
+  type ShiftCode = { code: string; label: string; hours: number; type: string; isActive: boolean; color?: string | null; scalesWithContract?: boolean; yearRolloverDefault?: number | null };
 
   const openEdit = (sc: ShiftCode) => {
     setForm({
@@ -60,9 +61,12 @@ export default function ShiftCodesConfig() {
       isActive: sc.isActive,
       color: sc.color ?? "",
       scalesWithContract: sc.scalesWithContract ?? false,
+      yearRolloverDefault: sc.yearRolloverDefault != null ? String(sc.yearRolloverDefault) : "",
     });
     setDialog(sc);
   };
+
+  const parsedYearRolloverDefault = form.yearRolloverDefault !== "" ? parseFloat(form.yearRolloverDefault) : null;
 
   const handleSave = () => {
     if (dialog === "create") {
@@ -76,6 +80,7 @@ export default function ShiftCodesConfig() {
             isActive: form.isActive,
             color: form.color || null,
             scalesWithContract: form.scalesWithContract,
+            yearRolloverDefault: parsedYearRolloverDefault,
           },
         },
         {
@@ -97,6 +102,7 @@ export default function ShiftCodesConfig() {
             isActive: form.isActive,
             color: form.color || null,
             scalesWithContract: form.scalesWithContract,
+            yearRolloverDefault: parsedYearRolloverDefault,
           },
         },
         {
@@ -273,6 +279,20 @@ export default function ShiftCodesConfig() {
                 <Label>Active</Label>
                 <Switch checked={form.isActive} onCheckedChange={(v) => setForm({ ...form, isActive: v })} />
               </div>
+              {(form.type === "holiday") && (
+                <div className="space-y-1.5">
+                  <Label>Year-rollover default (hours) <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    placeholder="Leave blank to default to 0 (or 273.6 for C0)"
+                    value={form.yearRolloverDefault}
+                    onChange={(e) => setForm({ ...form, yearRolloverDefault: e.target.value })}
+                  />
+                  <p className="text-xs text-muted-foreground">Balance set for all employees when running a new-year balance reset.</p>
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label>Custom Color <span className="text-muted-foreground font-normal">(optional)</span></Label>
                 <div className="flex items-center gap-3">

@@ -1,6 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { ensureSchema, seedAdminUser, ensureUserSessionsTable, ensureHolidayTables } from "./lib/seed.js";
+import { ensureSchema, seedAdminUser, ensureUserSessionsTable, ensureHolidayTables, ensureShiftCodeRolloverColumn } from "./lib/seed.js";
 import { startNotificationJob } from "./lib/notifications.js";
 
 const rawPort = process.env["PORT"];
@@ -21,6 +21,7 @@ async function main() {
   await ensureSchema();
   await ensureUserSessionsTable();
   await ensureHolidayTables();
+  await ensureShiftCodeRolloverColumn();
   await seedAdminUser();
 
   await new Promise<void>((resolve, reject) => {

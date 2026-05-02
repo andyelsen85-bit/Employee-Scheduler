@@ -211,6 +211,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/Employee"
 
+  /employees/bulk-reset-balances:
+    post:
+      operationId: bulkResetBalances
+      tags: [employees]
+      summary: Reset all employee holiday balances to configured defaults (year rollover)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkResetBalancesBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkResetBalancesResult"
+
   # ── OFFICES ────────────────────────────────────────────────────────────────
   /offices:
     get:
@@ -1562,6 +1581,33 @@ components:
             type: number
           description: "Map of shiftCode → new balance for other holiday codes"
 
+    BulkResetBalancesBody:
+      type: object
+      properties:
+        c0Hours:
+          type: number
+          description: "Default hours to set for C0 (holidayHoursRemaining). Defaults to 273.6."
+        balanceDefaults:
+          type: object
+          additionalProperties:
+            type: number
+          description: "Map of shiftCode → default hours for other holiday codes. Codes not listed default to 0."
+        year:
+          type: integer
+          description: "The target year for the reset (used for logging only)."
+      required: []
+
+    BulkResetBalancesResult:
+      type: object
+      properties:
+        employeesReset:
+          type: integer
+          description: "Number of employees whose balances were reset."
+        year:
+          type: integer
+          description: "The target year for which balances were reset."
+      required: [employeesReset, year]
+
     # OFFICE
     Office:
       type: object
@@ -1667,6 +1713,10 @@ components:
           type: string
           nullable: true
           description: "Custom hex color for this shift code in the planning view (overrides type default)"
+        yearRolloverDefault:
+          type: number
+          nullable: true
+          description: "Default balance hours to apply when resetting balances at the start of a new year. Null means 0 for non-C0 codes, or 273.6 for C0."
       required: [code, label, hours, type, isActive, scalesWithContract]
 
     CreateShiftCodeBody:
@@ -1687,6 +1737,10 @@ components:
         color:
           type: string
           nullable: true
+        yearRolloverDefault:
+          type: number
+          nullable: true
+          description: "Default balance hours to apply during year rollover reset."
       required: [code, label, hours, type]
 
     UpdateShiftCodeBody:
@@ -1705,6 +1759,10 @@ components:
         color:
           type: string
           nullable: true
+        yearRolloverDefault:
+          type: number
+          nullable: true
+          description: "Default balance hours to apply during year rollover reset."
 
     # WEEK TEMPLATE
     WeekTemplate:

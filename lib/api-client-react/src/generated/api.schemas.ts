@@ -290,6 +290,27 @@ export interface UpdateCountersBody {
   holidayBalances?: UpdateCountersBodyHolidayBalances;
 }
 
+/**
+ * Map of shiftCode → default hours for other holiday codes. Codes not listed default to 0.
+ */
+export type BulkResetBalancesBodyBalanceDefaults = { [key: string]: number };
+
+export interface BulkResetBalancesBody {
+  /** Default hours to set for C0 (holidayHoursRemaining). Defaults to 273.6. */
+  c0Hours?: number;
+  /** Map of shiftCode → default hours for other holiday codes. Codes not listed default to 0. */
+  balanceDefaults?: BulkResetBalancesBodyBalanceDefaults;
+  /** The target year for the reset (used for logging only). */
+  year?: number;
+}
+
+export interface BulkResetBalancesResult {
+  /** Number of employees whose balances were reset. */
+  employeesReset: number;
+  /** The target year for which balances were reset. */
+  year: number;
+}
+
 export interface Office {
   id: number;
   name: string;
@@ -336,6 +357,8 @@ export interface ShiftCode {
   scalesWithContract: boolean;
   /** Custom hex color for this shift code in the planning view (overrides type default) */
   color?: string | null;
+  /** Default balance hours to apply when resetting balances at the start of a new year. Null means 0 for non-C0 codes, or 273.6 for C0. */
+  yearRolloverDefault?: number | null;
 }
 
 export interface CreateShiftCodeBody {
@@ -346,6 +369,8 @@ export interface CreateShiftCodeBody {
   isActive?: boolean;
   scalesWithContract?: boolean;
   color?: string | null;
+  /** Default balance hours to apply during year rollover reset. */
+  yearRolloverDefault?: number | null;
 }
 
 export interface UpdateShiftCodeBody {
@@ -355,6 +380,8 @@ export interface UpdateShiftCodeBody {
   isActive?: boolean;
   scalesWithContract?: boolean;
   color?: string | null;
+  /** Default balance hours to apply during year rollover reset. */
+  yearRolloverDefault?: number | null;
 }
 
 export interface TemplateDayEntry {

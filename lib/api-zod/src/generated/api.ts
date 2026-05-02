@@ -553,6 +553,35 @@ export const UpdateEmployeeCountersResponse = zod.object({
 });
 
 /**
+ * @summary Reset all employee holiday balances to configured defaults (year rollover)
+ */
+export const BulkResetBalancesBody = zod.object({
+  c0Hours: zod
+    .number()
+    .optional()
+    .describe(
+      "Default hours to set for C0 (holidayHoursRemaining). Defaults to 273.6.",
+    ),
+  balanceDefaults: zod
+    .record(zod.string(), zod.number())
+    .optional()
+    .describe(
+      "Map of shiftCode → default hours for other holiday codes. Codes not listed default to 0.",
+    ),
+  year: zod
+    .number()
+    .optional()
+    .describe("The target year for the reset (used for logging only)."),
+});
+
+export const BulkResetBalancesResponse = zod.object({
+  employeesReset: zod
+    .number()
+    .describe("Number of employees whose balances were reset."),
+  year: zod.number().describe("The target year for which balances were reset."),
+});
+
+/**
  * @summary List all offices with their employee assignments
  */
 export const ListOfficesResponseItem = zod.object({
@@ -683,6 +712,12 @@ export const ListShiftCodesResponseItem = zod.object({
     .describe(
       "Custom hex color for this shift code in the planning view (overrides type default)",
     ),
+  yearRolloverDefault: zod
+    .number()
+    .nullish()
+    .describe(
+      "Default balance hours to apply when resetting balances at the start of a new year. Null means 0 for non-C0 codes, or 273.6 for C0.",
+    ),
 });
 export const ListShiftCodesResponse = zod.array(ListShiftCodesResponseItem);
 
@@ -694,6 +729,10 @@ export const CreateShiftCodeBody = zod.object({
   isActive: zod.boolean().optional(),
   scalesWithContract: zod.boolean().optional(),
   color: zod.string().nullish(),
+  yearRolloverDefault: zod
+    .number()
+    .nullish()
+    .describe("Default balance hours to apply during year rollover reset."),
 });
 
 export const UpdateShiftCodeParams = zod.object({
@@ -707,6 +746,10 @@ export const UpdateShiftCodeBody = zod.object({
   isActive: zod.boolean().optional(),
   scalesWithContract: zod.boolean().optional(),
   color: zod.string().nullish(),
+  yearRolloverDefault: zod
+    .number()
+    .nullish()
+    .describe("Default balance hours to apply during year rollover reset."),
 });
 
 export const UpdateShiftCodeResponse = zod.object({
@@ -727,6 +770,12 @@ export const UpdateShiftCodeResponse = zod.object({
     .nullish()
     .describe(
       "Custom hex color for this shift code in the planning view (overrides type default)",
+    ),
+  yearRolloverDefault: zod
+    .number()
+    .nullish()
+    .describe(
+      "Default balance hours to apply when resetting balances at the start of a new year. Null means 0 for non-C0 codes, or 273.6 for C0.",
     ),
 });
 

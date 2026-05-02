@@ -7,6 +7,7 @@ import {
   useDeleteEmployee,
   useListShiftCodes,
   getListShiftCodesQueryKey,
+  useBulkResetBalances,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -14,11 +15,11 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState } from "react";
-import { Plus, Search, Pencil, Trash2, User, ShieldCheck, Crown, AlertTriangle } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, User, ShieldCheck, Crown, AlertTriangle, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const COUNTRY_FLAGS: Record<string, string> = {
@@ -33,6 +34,11 @@ export default function Employees() {
   const [newName, setNewName] = useState("");
   const [newCountry, setNewCountry] = useState("lu");
 
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [resetYear, setResetYear] = useState(new Date().getFullYear());
+  const [resetC0Hours, setResetC0Hours] = useState(273.6);
+  const [resetCodeDefaults, setResetCodeDefaults] = useState<Record<string, number>>({});
+
   const { data: employees, isLoading } = useListEmployees({
     query: { queryKey: getListEmployeesQueryKey() },
   });
@@ -46,6 +52,7 @@ export default function Employees() {
 
   const createEmployee = useCreateEmployee();
   const deleteEmployee = useDeleteEmployee();
+  const bulkReset = useBulkResetBalances();
 
   const filtered = employees?.filter((e) =>
     e.name.toLowerCase().includes(search.toLowerCase())
@@ -91,15 +98,66 @@ export default function Employees() {
     );
   };
 
+  const handleOpenResetDialog = () => {
+    const nextYear = new Date().getFullYear() + 1;
+    setResetYear(nextYear);
+
+    // Pre-populate from stored yearRolloverDefault on shift codes
+    const c0Code = shiftCodes?.find((sc) => sc.code === "C0");
+    setResetC0Hours((c0Code as { yearRolloverDefault?: number | null } | undefined)?.yearRolloverDefault ?? 273.6);
+
+    const defaults: Record<string, number> = {};
+    for (const sc of activeHolidayCodes) {
+      defaults[sc.code] = (sc as { yearRolloverDefault?: number | null }).yearRolloverDefault ?? 0;
+    }
+    setResetCodeDefaults(defaults);
+    setResetDialogOpen(true);
+  };
+
+  const handleBulkReset = () => {
+    bulkReset.mutate(
+      {
+        data: {
+          c0Hours: resetC0Hours,
+          balanceDefaults: resetCodeDefaults,
+          year: resetYear,
+        },
+      },
+      {
+        onSuccess: (result) => {
+          queryClient.invalidateQueries({ queryKey: getListEmployeesQueryKey() });
+          setResetDialogOpen(false);
+          toast({
+            title: "Balances reset",
+            description: `${result.employeesReset} employee${result.employeesReset !== 1 ? "s" : ""} reset for ${result.year}.`,
+          });
+        },
+        onError: () => {
+          toast({
+            title: "Reset failed",
+            description: "Could not reset balances. Please try again.",
+            variant: "destructive",
+          });
+        },
+      }
+    );
+  };
+
   return (
     <Layout>
       <div className="flex flex-col gap-6">
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold tracking-tight">Employees</h1>
-          <Button onClick={() => setCreating(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Employee
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={handleOpenResetDialog}>
+              <RotateCcw className="h-4 w-4 mr-2" />
+              Reset balances for new year
+            </Button>
+            <Button onClick={() => setCreating(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Employee
+            </Button>
+          </div>
         </div>
 
         <div className="relative">
@@ -225,6 +283,72 @@ export default function Employees() {
               <Button variant="outline" onClick={() => setCreating(false)}>Cancel</Button>
               <Button onClick={handleCreate} disabled={!newName.trim() || createEmployee.isPending}>
                 Create Employee
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Reset balances for new year</DialogTitle>
+              <DialogDescription>
+                This will overwrite every employee's holiday balances with the values below and log the changes. This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-1.5">
+                <Label>Target year</Label>
+                <Input
+                  type="number"
+                  value={resetYear}
+                  onChange={(e) => setResetYear(parseInt(e.target.value, 10) || new Date().getFullYear())}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>C0 — Main holiday balance (hours)</Label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  value={resetC0Hours}
+                  onChange={(e) => setResetC0Hours(parseFloat(e.target.value) || 0)}
+                />
+              </div>
+              {activeHolidayCodes.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Other holiday code defaults (hours)</Label>
+                  {activeHolidayCodes.map((sc) => (
+                    <div key={sc.code} className="flex items-center gap-3">
+                      <span className="w-16 shrink-0 text-sm font-medium">{sc.code}</span>
+                      <Input
+                        type="number"
+                        step="0.1"
+                        value={resetCodeDefaults[sc.code] ?? 0}
+                        onChange={(e) =>
+                          setResetCodeDefaults((prev) => ({
+                            ...prev,
+                            [sc.code]: parseFloat(e.target.value) || 0,
+                          }))
+                        }
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                {employees?.length ?? 0} employee{(employees?.length ?? 0) !== 1 ? "s" : ""} will be affected.
+              </p>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setResetDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleBulkReset}
+                disabled={bulkReset.isPending}
+              >
+                {bulkReset.isPending ? "Resetting…" : `Reset all balances for ${resetYear}`}
               </Button>
             </DialogFooter>
           </DialogContent>

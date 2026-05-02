@@ -85,6 +85,22 @@ export async function ensureHolidayTables(): Promise<void> {
   }
 }
 
+export async function ensureShiftCodeRolloverColumn(): Promise<void> {
+  try {
+    const client = await pool.connect();
+    try {
+      await client.query(`
+        ALTER TABLE "shift_codes" ADD COLUMN IF NOT EXISTS "year_rollover_default" real;
+      `);
+    } finally {
+      client.release();
+    }
+    logger.info("shift_codes.year_rollover_default column ensured");
+  } catch (err) {
+    logger.error({ err }, "Failed to ensure shift_codes.year_rollover_default column");
+  }
+}
+
 export const SETUP_REQUIRED_MARKER = "__NEEDS_SETUP__";
 
 export async function seedAdminUser(): Promise<void> {

@@ -1,7 +1,7 @@
 import { requireAdmin } from "../middleware/auth.js";
 import { Router } from "express";
 import { eq, desc } from "drizzle-orm";
-import { db, employeesTable, employeeHolidayBalancesTable, holidayBalanceLogTable } from "@workspace/db";
+import { db, employeesTable, employeeHolidayBalancesTable, holidayBalanceLogTable, shiftCodesTable } from "@workspace/db";
 import {
   CreateEmployeeBody,
   UpdateEmployeeBody,
@@ -10,6 +10,7 @@ import {
   DeleteEmployeeParams,
   UpdateEmployeeCountersParams,
   UpdateEmployeeCountersBody,
+  BulkResetBalancesBody,
 } from "@workspace/api-zod";
 
 const router = Router();
@@ -294,6 +295,114 @@ router.put("/employees/:id/counters", requireAdmin, async (req, res): Promise<vo
 
   const emp = await getEmployeeWithBalances(params.data.id);
   res.json(emp);
+});
+
+router.post("/employees/bulk-reset-balances", requireAdmin, async (req, res): Promise<void> => {
+  const parsed = BulkResetBalancesBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  const { year = new Date().getFullYear() } = parsed.data;
+
+  // Load shift code defaults from DB to use as fallback when not explicitly provided
+  const allShiftCodes = await db.select().from(shiftCodesTable);
+  const c0ShiftCode = allShiftCodes.find((sc) => sc.code === "C0");
+  const c0Hours = parsed.data.c0Hours ?? (c0ShiftCode?.yearRolloverDefault ?? 273.6);
+
+  // For other holiday codes, use their stored yearRolloverDefault (fall back to 0)
+  let balanceDefaults = parsed.data.balanceDefaults ?? {};
+  if (parsed.data.balanceDefaults === undefined || parsed.data.balanceDefaults === null) {
+    const storedDefaults: Record<string, number> = {};
+    for (const sc of allShiftCodes) {
+      if (sc.type === "holiday" && sc.code !== "C0" && sc.isActive) {
+        storedDefaults[sc.code] = sc.yearRolloverDefault ?? 0;
+      }
+    }
+    balanceDefaults = storedDefaults;
+  }
+
+  const allEmployees = await db.select({ id: employeesTable.id, holidayHoursRemaining: employeesTable.holidayHoursRemaining }).from(employeesTable);
+
+  const allBalances = await db.select().from(employeeHolidayBalancesTable);
+  const balanceMapByEmp: Record<number, Record<string, number>> = {};
+  for (const b of allBalances) {
+    if (!balanceMapByEmp[b.employeeId]) balanceMapByEmp[b.employeeId] = {};
+    balanceMapByEmp[b.employeeId][b.shiftCodeCode] = b.balanceHours;
+  }
+
+  const logEntries: (typeof holidayBalanceLogTable.$inferInsert)[] = [];
+
+  for (const emp of allEmployees) {
+    const prevC0 = emp.holidayHoursRemaining;
+    const newC0 = c0Hours;
+    if (prevC0 !== newC0) {
+      logEntries.push({
+        employeeId: emp.id,
+        shiftCode: "C0",
+        delta: Math.round((newC0 - prevC0) * 10) / 10,
+        previousValue: prevC0,
+        newValue: newC0,
+        triggeredBy: `year_rollover_${year}`,
+      });
+    }
+
+    const empCurrentBalances = balanceMapByEmp[emp.id] ?? {};
+    for (const [code, defaultHours] of Object.entries(balanceDefaults as Record<string, number>)) {
+      const prev = empCurrentBalances[code] ?? 0;
+      if (prev !== defaultHours) {
+        logEntries.push({
+          employeeId: emp.id,
+          shiftCode: code,
+          delta: Math.round((defaultHours - prev) * 10) / 10,
+          previousValue: prev,
+          newValue: defaultHours,
+          triggeredBy: `year_rollover_${year}`,
+        });
+      }
+    }
+
+    // Reset balances for codes currently tracked but not in balanceDefaults → set to 0
+    for (const [code, prev] of Object.entries(empCurrentBalances)) {
+      if (!(code in (balanceDefaults as Record<string, number>)) && prev !== 0) {
+        logEntries.push({
+          employeeId: emp.id,
+          shiftCode: code,
+          delta: Math.round((0 - prev) * 10) / 10,
+          previousValue: prev,
+          newValue: 0,
+          triggeredBy: `year_rollover_${year}`,
+        });
+      }
+    }
+  }
+
+  // Apply resets
+  await db.update(employeesTable).set({ holidayHoursRemaining: c0Hours });
+
+  // Reset all existing employee_holiday_balances to 0 first
+  await db.update(employeeHolidayBalancesTable).set({ balanceHours: 0, updatedAt: new Date() });
+
+  // Then upsert configured defaults
+  for (const [code, defaultHours] of Object.entries(balanceDefaults as Record<string, number>)) {
+    for (const emp of allEmployees) {
+      await db
+        .insert(employeeHolidayBalancesTable)
+        .values({ employeeId: emp.id, shiftCodeCode: code, balanceHours: defaultHours })
+        .onConflictDoUpdate({
+          target: [employeeHolidayBalancesTable.employeeId, employeeHolidayBalancesTable.shiftCodeCode],
+          set: { balanceHours: defaultHours, updatedAt: new Date() },
+        });
+    }
+  }
+
+  if (logEntries.length > 0) {
+    await db.insert(holidayBalanceLogTable).values(logEntries);
+  }
+
+  req.log.info({ year, employeesReset: allEmployees.length }, "Bulk holiday balance reset completed");
+
+  res.json({ employeesReset: allEmployees.length, year });
 });
 
 export default router;

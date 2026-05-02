@@ -18,6 +18,8 @@ import type {
 
 import type {
   AuthUser,
+  BulkResetBalancesBody,
+  BulkResetBalancesResult,
   CreateDemandBody,
   CreateDepartmentBody,
   CreateEmployeeBody,
@@ -962,6 +964,92 @@ export const useUpdateEmployeeCounters = <
   TContext
 > => {
   return useMutation(getUpdateEmployeeCountersMutationOptions(options));
+};
+
+/**
+ * @summary Reset all employee holiday balances to configured defaults (year rollover)
+ */
+export const getBulkResetBalancesUrl = () => {
+  return `/api/employees/bulk-reset-balances`;
+};
+
+export const bulkResetBalances = async (
+  bulkResetBalancesBody: BulkResetBalancesBody,
+  options?: RequestInit,
+): Promise<BulkResetBalancesResult> => {
+  return customFetch<BulkResetBalancesResult>(getBulkResetBalancesUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(bulkResetBalancesBody),
+  });
+};
+
+export const getBulkResetBalancesMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof bulkResetBalances>>,
+    TError,
+    { data: BodyType<BulkResetBalancesBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof bulkResetBalances>>,
+  TError,
+  { data: BodyType<BulkResetBalancesBody> },
+  TContext
+> => {
+  const mutationKey = ["bulkResetBalances"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof bulkResetBalances>>,
+    { data: BodyType<BulkResetBalancesBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return bulkResetBalances(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type BulkResetBalancesMutationResult = NonNullable<
+  Awaited<ReturnType<typeof bulkResetBalances>>
+>;
+export type BulkResetBalancesMutationBody = BodyType<BulkResetBalancesBody>;
+export type BulkResetBalancesMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Reset all employee holiday balances to configured defaults (year rollover)
+ */
+export const useBulkResetBalances = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof bulkResetBalances>>,
+    TError,
+    { data: BodyType<BulkResetBalancesBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof bulkResetBalances>>,
+  TError,
+  { data: BodyType<BulkResetBalancesBody> },
+  TContext
+> => {
+  return useMutation(getBulkResetBalancesMutationOptions(options));
 };
 
 /**
