@@ -25,7 +25,8 @@
     "nodemailer": "^8.0.7",
     "pino": "^9",
     "pino-http": "^10",
-    "xlsx": "^0.18.5"
+    "write-excel-file": "4.0.4",
+    "read-excel-file": "9.0.7"
   },
   "devDependencies": {
     "@types/bcryptjs": "^3.0.0",

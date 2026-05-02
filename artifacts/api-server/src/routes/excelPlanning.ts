@@ -1,6 +1,9 @@
 import { requireAdmin } from "../middleware/auth.js";
 import { Router } from "express";
-import * as XLSX from "xlsx";
+import writeXlsxFile from "write-excel-file/node";
+import type { SheetData } from "write-excel-file/node";
+import readXlsxFile from "read-excel-file/node";
+import type { Sheet } from "read-excel-file/node";
 import multer from "multer";
 import { db } from "@workspace/db";
 import {
@@ -8,8 +11,6 @@ import {
   planningMonthsTable,
   planningEntriesTable,
   shiftCodesTable,
-  officesTable,
-  officeEmployeesTable,
 } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 
@@ -34,14 +35,13 @@ function workingDatesForMonth(year: number, month: number): string[] {
   return dates;
 }
 
-/** Build one worksheet for an arbitrary ordered list of working dates. */
-function buildSheet(
+/** Build 2D array of rows for a worksheet. */
+function buildRows(
   dates: string[],
   employees: { id: number; name: string; displayOrder: number }[],
   entriesByEmpDate: Map<string, { shiftCode: string | null; deskCode: string | null }>
-): XLSX.WorkSheet {
-  const headerRow = ["Employee", ...dates];
-  const rows: (string | null)[][] = [headerRow];
+): SheetData {
+  const rows: SheetData = [["Employee", ...dates]];
 
   const sorted = [...employees].sort((a, b) => a.displayOrder - b.displayOrder || a.name.localeCompare(b.name));
 
@@ -58,9 +58,12 @@ function buildSheet(
     rows.push(deskRow);
   }
 
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws["!cols"] = [{ wch: 20 }, ...dates.map(() => ({ wch: 10 }))];
-  return ws;
+  return rows;
+}
+
+/** Build column width spec: first col 20, rest 10. */
+function buildColumns(dateCount: number) {
+  return [{ width: 20 }, ...Array<{ width: number }>(dateCount).fill({ width: 10 })];
 }
 
 // ── EXPORT ───────────────────────────────────────────────────────────────────
@@ -83,7 +86,9 @@ router.get("/planning/excel-export", requireAdmin, async (req, res): Promise<voi
     .from(employeesTable)
     .orderBy(employeesTable.displayOrder, employeesTable.name);
 
-  const wb = XLSX.utils.book_new();
+  let dates: string[];
+  let sheetName: string;
+  let rowData: SheetData;
 
   if (monthParam) {
     // ── Single month: one sheet ───────────────────────────────────────────────
@@ -105,13 +110,13 @@ router.get("/planning/excel-export", requireAdmin, async (req, res): Promise<voi
         });
       }
     }
-    const dates = workingDatesForMonth(year, monthParam);
-    const sheetName = `${year}-${String(monthParam).padStart(2, "0")}`;
-    XLSX.utils.book_append_sheet(wb, buildSheet(dates, employees, entriesByEmpDate), sheetName);
+    dates = workingDatesForMonth(year, monthParam);
+    sheetName = `${year}-${String(monthParam).padStart(2, "0")}`;
+    rowData = buildRows(dates, employees, entriesByEmpDate);
   } else {
     // ── Full year: one single sheet with all working days Jan–Dec ─────────────
-    const allDates: string[] = [];
-    for (let m = 1; m <= 12; m++) allDates.push(...workingDatesForMonth(year, m));
+    dates = [];
+    for (let m = 1; m <= 12; m++) dates.push(...workingDatesForMonth(year, m));
 
     const entriesByEmpDate = new Map<string, { shiftCode: string | null; deskCode: string | null }>();
 
@@ -133,17 +138,23 @@ router.get("/planning/excel-export", requireAdmin, async (req, res): Promise<voi
       }
     }
 
-    XLSX.utils.book_append_sheet(wb, buildSheet(allDates, employees, entriesByEmpDate), `Planning ${year}`);
+    sheetName = `Planning ${year}`;
+    rowData = buildRows(dates, employees, entriesByEmpDate);
   }
 
-  const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+  const result = await writeXlsxFile(rowData, {
+    sheet: sheetName,
+    columns: buildColumns(dates.length),
+  });
+  const buffer = await result.toBuffer();
+
   const filename = monthParam
     ? `planning-${year}-${String(monthParam).padStart(2, "0")}.xlsx`
     : `planning-${year}.xlsx`;
 
   res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-  res.send(buf);
+  res.send(buffer);
 });
 
 // ── IMPORT ───────────────────────────────────────────────────────────────────
@@ -151,6 +162,11 @@ router.get("/planning/excel-export", requireAdmin, async (req, res): Promise<voi
 router.post("/planning/excel-import", requireAdmin, upload.single("file"), async (req, res): Promise<void> => {
   if (!req.file) {
     res.status(400).json({ error: "No file uploaded" });
+    return;
+  }
+
+  if (!req.file.originalname.toLowerCase().endsWith(".xlsx")) {
+    res.status(400).json({ error: "Only .xlsx files are supported. Please export the file as .xlsx from your spreadsheet application." });
     return;
   }
 
@@ -163,12 +179,14 @@ router.post("/planning/excel-import", requireAdmin, upload.single("file"), async
   const shiftCodeRows = await db.select().from(shiftCodesTable);
   const validShiftCodes = new Set(shiftCodeRows.map((s) => s.code));
 
-  // Parse workbook — supports single month or full-year (multi-sheet)
-  let wb: XLSX.WorkBook;
+  // readXlsxFile (default export) reads ALL sheets at once.
+  // Returns Sheet<number>[] where each Sheet = { sheet: string; data: SheetData }.
+  // SheetData cell values are: string | number | boolean | Date | null
+  let allSheets: Sheet<number>[];
   try {
-    wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: false });
+    allSheets = await readXlsxFile(req.file.buffer);
   } catch {
-    res.status(400).json({ error: "Could not parse Excel file" });
+    res.status(400).json({ error: "Could not parse Excel file. Ensure the file is a valid .xlsx document." });
     return;
   }
 
@@ -182,23 +200,28 @@ router.post("/planning/excel-import", requireAdmin, upload.single("file"), async
   const toImport: ImportEntry[] = [];
   const warnings: string[] = [];
 
-  for (const sheetName of wb.SheetNames) {
-    const ws = wb.Sheets[sheetName];
-    const rows: (string | null | undefined)[][] = XLSX.utils.sheet_to_json(ws, {
-      header: 1,
-      defval: null,
-      raw: false,
-    }) as (string | null | undefined)[][];
+  for (const sheetEntry of allSheets) {
+    const sheetName = sheetEntry.sheet;
+
+    // Convert all cell values to strings or null for consistent processing.
+    const rows: (string | null)[][] = sheetEntry.data.map((row) =>
+      row.map((cell) => {
+        if (cell === null || cell === undefined) return null;
+        if (cell instanceof Date) return cell.toISOString().slice(0, 10);
+        const s = String(cell).trim();
+        return s || null;
+      })
+    );
 
     if (rows.length < 2) continue;
 
     const headerRow = rows[0];
     // Dates start at column index 1
-    const dateByCol: Map<number, string> = new Map();
+    const dateByCol = new Map<number, string>();
     for (let col = 1; col < headerRow.length; col++) {
       const cell = headerRow[col];
-      if (cell && typeof cell === "string" && /^\d{4}-\d{2}-\d{2}$/.test(cell.trim())) {
-        dateByCol.set(col, cell.trim());
+      if (cell && /^\d{4}-\d{2}-\d{2}$/.test(cell)) {
+        dateByCol.set(col, cell);
       }
     }
 
@@ -207,12 +230,12 @@ router.post("/planning/excel-import", requireAdmin, upload.single("file"), async
       continue;
     }
 
-    // Process rows in pairs: shift row then desk row
-    // A row is a "shift row" if col 0 does NOT end with DESK_SUFFIX
+    // Process rows in pairs: shift row then desk row.
+    // A row is a "shift row" if col 0 does NOT end with DESK_SUFFIX.
     let i = 1;
     while (i < rows.length) {
       const row = rows[i];
-      const label = (row?.[0] as string | null | undefined)?.trim() ?? "";
+      const label = row?.[0]?.trim() ?? "";
       if (!label || label.endsWith(DESK_SUFFIX)) {
         i++;
         continue;
@@ -220,7 +243,7 @@ router.post("/planning/excel-import", requireAdmin, upload.single("file"), async
 
       const empName = label;
       const nextRow = rows[i + 1];
-      const nextLabel = (nextRow?.[0] as string | null | undefined)?.trim() ?? "";
+      const nextLabel = nextRow?.[0]?.trim() ?? "";
       const hasDeskRow = nextLabel === empName + DESK_SUFFIX;
 
       const emp = empByName.get(empName);
@@ -231,12 +254,10 @@ router.post("/planning/excel-import", requireAdmin, upload.single("file"), async
       }
 
       for (const [col, date] of dateByCol) {
-        const shiftRaw = (row?.[col] as string | null | undefined)?.toString().trim() || null;
-        const deskRaw = hasDeskRow
-          ? ((nextRow?.[col] as string | null | undefined)?.toString().trim() || null)
-          : null;
+        const shiftRaw = row?.[col]?.toString().trim() || null;
+        const deskRaw = hasDeskRow ? (nextRow?.[col]?.toString().trim() || null) : null;
 
-        const shiftCode = shiftRaw && validShiftCodes.has(shiftRaw) ? shiftRaw : shiftRaw ? null : null;
+        const shiftCode = shiftRaw && validShiftCodes.has(shiftRaw) ? shiftRaw : null;
         if (shiftRaw && !validShiftCodes.has(shiftRaw)) {
           warnings.push(`"${empName}" ${date}: unknown shift code "${shiftRaw}" — ignored`);
         }

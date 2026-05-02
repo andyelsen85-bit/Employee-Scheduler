@@ -15,7 +15,7 @@ import {
 const CURRENT_YEAR = new Date().getFullYear();
 const YEARS = [CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1];
 const MONTHS = [
-  { value: 0, label: "Full year (12 sheets)" },
+  { value: 0, label: "Full year (single sheet)" },
   { value: 1, label: "January" },
   { value: 2, label: "February" },
   { value: 3, label: "March" },
@@ -170,7 +170,7 @@ export default function ExcelExportImport() {
           </div>
 
           <p className="text-xs text-muted-foreground">
-            A full-year export produces one sheet per month; a single-month export produces one sheet.
+            Both full-year and single-month exports produce a single sheet with all working weekdays as columns.
             Weekends are omitted. Columns show dates in <code>YYYY-MM-DD</code> format — keep them
             unchanged when editing for a clean re-import.
           </p>
@@ -193,7 +193,7 @@ export default function ExcelExportImport() {
             <input
               ref={fileInputRef}
               type="file"
-              accept=".xlsx,.xls"
+              accept=".xlsx"
               className="hidden"
               onChange={handleFileChange}
             />
