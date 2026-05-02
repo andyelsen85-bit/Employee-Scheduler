@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import type { Request } from "express";
 import { requireAuth } from "../middleware/auth.js";
+import { SETUP_REQUIRED_MARKER } from "../lib/seed.js";
 
 declare module "express-session" {
   interface SessionData {
@@ -13,6 +14,32 @@ declare module "express-session" {
 }
 
 const router = Router();
+
+router.get("/auth/setup-status", async (_req, res): Promise<void> => {
+  const [admin] = await db.select().from(usersTable).where(eq(usersTable.username, "admin"));
+  res.json({ needsSetup: !admin || admin.passwordHash === SETUP_REQUIRED_MARKER });
+});
+
+router.post("/auth/setup", async (req, res): Promise<void> => {
+  const { password } = req.body as { password?: string };
+  if (!password || password.length < 6) {
+    res.status(400).json({ error: "Password must be at least 6 characters" });
+    return;
+  }
+
+  const [admin] = await db.select().from(usersTable).where(eq(usersTable.username, "admin"));
+  if (!admin || admin.passwordHash !== SETUP_REQUIRED_MARKER) {
+    res.status(403).json({ error: "Setup already completed" });
+    return;
+  }
+
+  const hash = await bcrypt.hash(password, 10);
+  await db.update(usersTable)
+    .set({ passwordHash: hash, isLegacy: false })
+    .where(eq(usersTable.id, admin.id));
+
+  res.json({ message: "Admin password set successfully" });
+});
 
 router.post("/auth/login", async (req, res): Promise<void> => {
   const { username, password } = req.body as { username?: string; password?: string };
@@ -24,6 +51,11 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   const [user] = await db.select().from(usersTable).where(eq(usersTable.username, username));
   if (!user) {
     res.status(401).json({ error: "Invalid username or password" });
+    return;
+  }
+
+  if (user.passwordHash === SETUP_REQUIRED_MARKER) {
+    res.status(403).json({ error: "setup_required" });
     return;
   }
 

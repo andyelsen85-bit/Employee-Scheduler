@@ -85,18 +85,20 @@ export async function ensureHolidayTables(): Promise<void> {
   }
 }
 
+export const SETUP_REQUIRED_MARKER = "__NEEDS_SETUP__";
+
 export async function seedAdminUser(): Promise<void> {
   try {
     const [existing] = await db.select().from(usersTable).where(eq(usersTable.username, "admin"));
     if (!existing) {
       await db.insert(usersTable).values({
         username: "admin",
-        passwordHash: "admin",
-        isLegacy: true,
+        passwordHash: SETUP_REQUIRED_MARKER,
+        isLegacy: false,
         role: "admin",
         employeeId: null,
       });
-      logger.info("Seeded initial admin user (legacy password)");
+      logger.info("Seeded initial admin user (setup required)");
     }
   } catch (err) {
     logger.error({ err }, "Failed to seed admin user");

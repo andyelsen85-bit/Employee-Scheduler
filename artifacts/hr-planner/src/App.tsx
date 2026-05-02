@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Login from "@/pages/login";
+import Setup from "@/pages/setup";
 import { AuthProvider, useAuth } from "@/context/auth-context";
 
 import Dashboard from "@/pages/dashboard";
@@ -72,13 +73,21 @@ function Router() {
 }
 
 function AppInner() {
-  const { user, loading, setUser } = useAuth();
+  const { user, loading, needsSetup, setUser, setNeedsSetup } = useAuth();
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-950">
         <div className="text-white text-sm">Loading...</div>
       </div>
+    );
+  }
+
+  if (needsSetup) {
+    return (
+      <Setup
+        onComplete={() => setNeedsSetup(false)}
+      />
     );
   }
 
