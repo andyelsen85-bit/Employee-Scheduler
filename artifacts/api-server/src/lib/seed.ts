@@ -52,7 +52,7 @@ export async function seedAdminUser(): Promise<void> {
     if (!existing) {
       await db.insert(usersTable).values({
         username: "admin",
-        passwordHash: "admin123",
+        passwordHash: "admin",
         isLegacy: true,
         role: "admin",
         employeeId: null,
