@@ -1361,6 +1361,11 @@ components:
         notes:
           type: string
           nullable: true
+        holidayBalances:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmployeeHolidayBalance"
+          description: "Per-code balances for holiday-type shift codes (excluding C0)"
         createdAt:
           type: string
           format: date-time
@@ -1384,6 +1389,7 @@ components:
         - overtimeHours
         - homeworkDaysUsedThisYear
         - displayOrder
+        - holidayBalances
         - createdAt
         - updatedAt
 
@@ -1528,6 +1534,17 @@ components:
           type: string
           nullable: true
 
+    EmployeeHolidayBalance:
+      type: object
+      properties:
+        shiftCode:
+          type: string
+          description: "Shift code (e.g. R1A, R1C, RS7)"
+        balanceHours:
+          type: number
+          description: "Remaining balance in hours (can be negative)"
+      required: [shiftCode, balanceHours]
+
     UpdateCountersBody:
       type: object
       properties:
@@ -1539,6 +1556,11 @@ components:
           type: number
         homeworkDaysUsedThisYear:
           type: integer
+        holidayBalances:
+          type: object
+          additionalProperties:
+            type: number
+          description: "Map of shiftCode → new balance for other holiday codes"
 
     # OFFICE
     Office:
@@ -1944,6 +1966,16 @@ components:
             $ref: "#/components/schemas/PermanenceWeek"
         totalViolations:
           type: integer
+        violations:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+              message:
+                type: string
+            required: [type, message]
       required:
         - year
         - month
@@ -1952,6 +1984,7 @@ components:
         - dailyOnsiteRate
         - permanenceSchedule
         - totalViolations
+        - violations
 
     EmployeeStatSummary:
       type: object
@@ -2005,20 +2038,18 @@ components:
       properties:
         weekStart:
           type: string
-
         weekEnd:
           type: string
-
-        group1Level1EmployeeId:
+        weekNumber:
+          type: integer
+        g1EmployeeId:
           type: integer
           nullable: true
-        group1Level2EmployeeId:
+        g2EmployeeId:
           type: integer
           nullable: true
-        group2Level1EmployeeId:
-          type: integer
-          nullable: true
-        group2Level2EmployeeId:
-          type: integer
-          nullable: true
-      required: [weekStart, weekEnd]
+        g1Manual:
+          type: boolean
+        g2Manual:
+          type: boolean
+      required: [weekStart, weekEnd, weekNumber, g1Manual, g2Manual]

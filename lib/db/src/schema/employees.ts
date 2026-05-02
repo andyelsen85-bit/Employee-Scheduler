@@ -7,6 +7,7 @@ import {
   real,
   timestamp,
   jsonb,
+  unique,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -66,3 +67,22 @@ export const insertEmployeeSchema = createInsertSchema(employeesTable).omit({
 });
 export type InsertEmployee = z.infer<typeof insertEmployeeSchema>;
 export type Employee = typeof employeesTable.$inferSelect;
+
+export const employeeHolidayBalancesTable = pgTable(
+  "employee_holiday_balances",
+  {
+    id: serial("id").primaryKey(),
+    employeeId: integer("employee_id")
+      .notNull()
+      .references(() => employeesTable.id, { onDelete: "cascade" }),
+    shiftCodeCode: text("shift_code_code").notNull(),
+    balanceHours: real("balance_hours").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [unique("uniq_emp_holiday_code").on(t.employeeId, t.shiftCodeCode)]
+);
+
+export type EmployeeHolidayBalance = typeof employeeHolidayBalancesTable.$inferSelect;

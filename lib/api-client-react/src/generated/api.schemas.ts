@@ -155,6 +155,13 @@ export type EmployeeDayCodePreferencesItem = {
   code: string;
 };
 
+export interface EmployeeHolidayBalance {
+  /** Shift code (e.g. R1A, R1C, RS7) */
+  shiftCode: string;
+  /** Remaining balance in hours (can be negative) */
+  balanceHours: number;
+}
+
 export interface Employee {
   id: number;
   name: string;
@@ -201,6 +208,8 @@ export interface Employee {
   /** ID of the admin user who approves demands for this employee */
   approverAdminId?: number | null;
   notes?: string | null;
+  /** Per-code balances for holiday-type shift codes (excluding C0) */
+  holidayBalances: EmployeeHolidayBalance[];
   createdAt: string;
   updatedAt: string;
 }
@@ -267,11 +276,18 @@ export interface UpdateEmployeeBody {
   notes?: string | null;
 }
 
+/**
+ * Map of shiftCode → new balance for other holiday codes
+ */
+export type UpdateCountersBodyHolidayBalances = { [key: string]: number };
+
 export interface UpdateCountersBody {
   prmCounter?: number;
   holidayHoursRemaining?: number;
   overtimeHours?: number;
   homeworkDaysUsedThisYear?: number;
+  /** Map of shiftCode → new balance for other holiday codes */
+  holidayBalances?: UpdateCountersBodyHolidayBalances;
 }
 
 export interface Office {
@@ -455,6 +471,11 @@ export interface UpdatePlanningEntryBody {
   notes?: string | null;
 }
 
+export type DashboardSummaryViolationsItem = {
+  type: string;
+  message: string;
+};
+
 export interface EmployeeStatSummary {
   employeeId: number;
   name: string;
@@ -477,10 +498,11 @@ export interface DailyOnsiteRate {
 export interface PermanenceWeek {
   weekStart: string;
   weekEnd: string;
-  group1Level1EmployeeId?: number | null;
-  group1Level2EmployeeId?: number | null;
-  group2Level1EmployeeId?: number | null;
-  group2Level2EmployeeId?: number | null;
+  weekNumber: number;
+  g1EmployeeId?: number | null;
+  g2EmployeeId?: number | null;
+  g1Manual: boolean;
+  g2Manual: boolean;
 }
 
 export interface DashboardSummary {
@@ -491,6 +513,7 @@ export interface DashboardSummary {
   dailyOnsiteRate: DailyOnsiteRate[];
   permanenceSchedule: PermanenceWeek[];
   totalViolations: number;
+  violations: DashboardSummaryViolationsItem[];
 }
 
 export type ListHolidaysParams = {

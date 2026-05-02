@@ -143,6 +143,16 @@ export const ListEmployeesResponseItem = zod.object({
     .nullish()
     .describe("ID of the admin user who approves demands for this employee"),
   notes: zod.string().nullish(),
+  holidayBalances: zod
+    .array(
+      zod.object({
+        shiftCode: zod.string().describe("Shift code (e.g. R1A, R1C, RS7)"),
+        balanceHours: zod
+          .number()
+          .describe("Remaining balance in hours (can be negative)"),
+      }),
+    )
+    .describe("Per-code balances for holiday-type shift codes (excluding C0)"),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
@@ -265,6 +275,16 @@ export const GetEmployeeResponse = zod.object({
     .nullish()
     .describe("ID of the admin user who approves demands for this employee"),
   notes: zod.string().nullish(),
+  holidayBalances: zod
+    .array(
+      zod.object({
+        shiftCode: zod.string().describe("Shift code (e.g. R1A, R1C, RS7)"),
+        balanceHours: zod
+          .number()
+          .describe("Remaining balance in hours (can be negative)"),
+      }),
+    )
+    .describe("Per-code balances for holiday-type shift codes (excluding C0)"),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
@@ -403,6 +423,16 @@ export const UpdateEmployeeResponse = zod.object({
     .nullish()
     .describe("ID of the admin user who approves demands for this employee"),
   notes: zod.string().nullish(),
+  holidayBalances: zod
+    .array(
+      zod.object({
+        shiftCode: zod.string().describe("Shift code (e.g. R1A, R1C, RS7)"),
+        balanceHours: zod
+          .number()
+          .describe("Remaining balance in hours (can be negative)"),
+      }),
+    )
+    .describe("Per-code balances for holiday-type shift codes (excluding C0)"),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
@@ -423,6 +453,10 @@ export const UpdateEmployeeCountersBody = zod.object({
   holidayHoursRemaining: zod.number().optional(),
   overtimeHours: zod.number().optional(),
   homeworkDaysUsedThisYear: zod.number().optional(),
+  holidayBalances: zod
+    .record(zod.string(), zod.number())
+    .optional()
+    .describe("Map of shiftCode → new balance for other holiday codes"),
 });
 
 export const UpdateEmployeeCountersResponse = zod.object({
@@ -504,6 +538,16 @@ export const UpdateEmployeeCountersResponse = zod.object({
     .nullish()
     .describe("ID of the admin user who approves demands for this employee"),
   notes: zod.string().nullish(),
+  holidayBalances: zod
+    .array(
+      zod.object({
+        shiftCode: zod.string().describe("Shift code (e.g. R1A, R1C, RS7)"),
+        balanceHours: zod
+          .number()
+          .describe("Remaining balance in hours (can be negative)"),
+      }),
+    )
+    .describe("Per-code balances for holiday-type shift codes (excluding C0)"),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
@@ -1201,13 +1245,20 @@ export const GetDashboardSummaryResponse = zod.object({
     zod.object({
       weekStart: zod.string(),
       weekEnd: zod.string(),
-      group1Level1EmployeeId: zod.number().nullish(),
-      group1Level2EmployeeId: zod.number().nullish(),
-      group2Level1EmployeeId: zod.number().nullish(),
-      group2Level2EmployeeId: zod.number().nullish(),
+      weekNumber: zod.number(),
+      g1EmployeeId: zod.number().nullish(),
+      g2EmployeeId: zod.number().nullish(),
+      g1Manual: zod.boolean(),
+      g2Manual: zod.boolean(),
     }),
   ),
   totalViolations: zod.number(),
+  violations: zod.array(
+    zod.object({
+      type: zod.string(),
+      message: zod.string(),
+    }),
+  ),
 });
 
 /**

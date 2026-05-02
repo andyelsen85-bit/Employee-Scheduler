@@ -68,6 +68,7 @@ export default function EmployeeDetail() {
 
   const [form, setForm] = useState<Record<string, unknown>>({});
   const [counters, setCounters] = useState<Record<string, number>>({});
+  const [holidayBalances, setHolidayBalances] = useState<Record<string, number>>({});
   const [allowedCodes, setAllowedCodes] = useState<Set<string>>(new Set());
   const [dayPrefs, setDayPrefs] = useState<DayPref[]>([]);
   const [prefersHA, setPrefersHA] = useState(false);
@@ -117,6 +118,11 @@ export default function EmployeeDetail() {
         overtimeHours: employee.overtimeHours,
         homeworkDaysUsedThisYear: employee.homeworkDaysUsedThisYear,
       });
+      const balanceMap: Record<string, number> = {};
+      for (const b of employee.holidayBalances) {
+        balanceMap[b.shiftCode] = b.balanceHours;
+      }
+      setHolidayBalances(balanceMap);
       setAllowedCodes(new Set(employee.allowedShiftCodes ?? []));
       const rawPrefs = employee.dayCodePreferences;
       if (Array.isArray(rawPrefs)) {
@@ -160,6 +166,9 @@ export default function EmployeeDetail() {
           holidayHoursRemaining: Number(counters.holidayHoursRemaining),
           overtimeHours: Number(counters.overtimeHours),
           homeworkDaysUsedThisYear: Number(counters.homeworkDaysUsedThisYear),
+          holidayBalances: Object.fromEntries(
+            Object.entries(holidayBalances).map(([k, v]) => [k, Number(v)])
+          ),
         },
       },
       {
@@ -466,7 +475,7 @@ export default function EmployeeDetail() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>Holiday Hours Remaining</Label>
+                <Label>C0 Holiday Hours Remaining</Label>
                 <Input
                   type="number"
                   step="0.1"
@@ -474,6 +483,17 @@ export default function EmployeeDetail() {
                   onChange={(e) => setCounters({ ...counters, holidayHoursRemaining: parseFloat(e.target.value) })}
                 />
               </div>
+              {shiftCodes?.filter((sc) => sc.type === "holiday" && sc.hours > 0 && sc.code !== "C0" && sc.isActive).map((sc) => (
+                <div key={sc.code} className="space-y-1.5">
+                  <Label>{sc.label} ({sc.code}) Balance</Label>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    value={holidayBalances[sc.code] ?? 0}
+                    onChange={(e) => setHolidayBalances({ ...holidayBalances, [sc.code]: parseFloat(e.target.value) })}
+                  />
+                </div>
+              ))}
               <div className="space-y-1.5">
                 <Label>Overtime Hours</Label>
                 <Input

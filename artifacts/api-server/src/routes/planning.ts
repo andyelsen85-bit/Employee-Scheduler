@@ -14,6 +14,7 @@ import {
   permanenceOverridesTable,
   spocRotationOverridesTable,
   appSettingsTable,
+  employeeHolidayBalancesTable,
 } from "@workspace/db";
 import {
   GetMonthPlanningParams,
@@ -804,7 +805,11 @@ router.post("/planning/:year/:month/confirm", requireAdmin, async (req, res): Pr
     const empContractPct: Record<number, number> = {};
     for (const e of empRows) empContractPct[e.id] = e.contractPercent ?? 100;
 
+    // Sum planned hours per employee (all shift codes count toward PRM)
     const plannedByEmployee: Record<number, number> = {};
+    // Track hours consumed per employee per holiday-type shift code (for balance decrements)
+    const holidayHoursConsumed: Record<number, Record<string, number>> = {};
+
     for (const entry of entries) {
       if (!entry.shiftCode) continue;
       const sc = shiftCodeMap.get(entry.shiftCode);
@@ -812,18 +817,54 @@ router.post("/planning/:year/:month/confirm", requireAdmin, async (req, res): Pr
       const pct = empContractPct[entry.employeeId] ?? 100;
       const hours = sc.scalesWithContract && pct !== 100 ? sc.hours * (pct / 100) : sc.hours;
       plannedByEmployee[entry.employeeId] = (plannedByEmployee[entry.employeeId] ?? 0) + hours;
+
+      // Track holiday code consumption for balance decrements
+      if (sc.type === "holiday" && sc.hours > 0) {
+        if (!holidayHoursConsumed[entry.employeeId]) {
+          holidayHoursConsumed[entry.employeeId] = {};
+        }
+        holidayHoursConsumed[entry.employeeId][entry.shiftCode] =
+          (holidayHoursConsumed[entry.employeeId][entry.shiftCode] ?? 0) + sc.hours;
+      }
     }
 
-    for (const [empIdStr, planned] of Object.entries(plannedByEmployee)) {
-      const empId = Number(empIdStr);
-      const pct = empContractPct[empId] ?? 100;
+    // PRM update: include ALL active employees — those with 0 entries still get a negative delta
+    for (const e of empRows) {
+      const pct = e.contractPercent ?? 100;
       const empContractualHours = Math.round(baseContractualHours * (pct / 100) * 10) / 10;
-      const diff = planned - empContractualHours;
+      const planned = Math.round((plannedByEmployee[e.id] ?? 0) * 10) / 10;
+      const diff = Math.round((planned - empContractualHours) * 10) / 10;
       if (diff !== 0) {
         await db
           .update(employeesTable)
           .set({ prmCounter: sql`${employeesTable.prmCounter} + ${diff}` })
-          .where(eq(employeesTable.id, empId));
+          .where(eq(employeesTable.id, e.id));
+      }
+    }
+
+    // Holiday balance decrements
+    for (const [empIdStr, codeHours] of Object.entries(holidayHoursConsumed)) {
+      const empId = Number(empIdStr);
+      for (const [code, consumed] of Object.entries(codeHours)) {
+        if (code === "C0") {
+          // C0 is tracked via holidayHoursRemaining on the employees table
+          await db
+            .update(employeesTable)
+            .set({ holidayHoursRemaining: sql`${employeesTable.holidayHoursRemaining} - ${consumed}` })
+            .where(eq(employeesTable.id, empId));
+        } else {
+          // All other holiday codes go into employee_holiday_balances (create row if missing)
+          await db
+            .insert(employeeHolidayBalancesTable)
+            .values({ employeeId: empId, shiftCodeCode: code, balanceHours: -consumed })
+            .onConflictDoUpdate({
+              target: [employeeHolidayBalancesTable.employeeId, employeeHolidayBalancesTable.shiftCodeCode],
+              set: {
+                balanceHours: sql`${employeeHolidayBalancesTable.balanceHours} - ${consumed}`,
+                updatedAt: new Date(),
+              },
+            });
+        }
       }
     }
   }

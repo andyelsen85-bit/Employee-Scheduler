@@ -1,7 +1,7 @@
 import { requireAdmin } from "../middleware/auth.js";
 import { Router } from "express";
 import { eq } from "drizzle-orm";
-import { db, employeesTable } from "@workspace/db";
+import { db, employeesTable, employeeHolidayBalancesTable } from "@workspace/db";
 import {
   CreateEmployeeBody,
   UpdateEmployeeBody,
@@ -14,9 +14,41 @@ import {
 
 const router = Router();
 
+async function getEmployeeWithBalances(id: number) {
+  const [row] = await db
+    .select()
+    .from(employeesTable)
+    .where(eq(employeesTable.id, id));
+  if (!row) return null;
+  const balances = await db
+    .select()
+    .from(employeeHolidayBalancesTable)
+    .where(eq(employeeHolidayBalancesTable.employeeId, id));
+  return {
+    ...row,
+    holidayBalances: balances.map((b) => ({
+      shiftCode: b.shiftCodeCode,
+      balanceHours: b.balanceHours,
+    })),
+  };
+}
+
 router.get("/employees", async (_req, res): Promise<void> => {
   const rows = await db.select().from(employeesTable).orderBy(employeesTable.name);
-  res.json(rows);
+  const balanceRows = await db.select().from(employeeHolidayBalancesTable);
+
+  const balancesByEmp: Record<number, { shiftCode: string; balanceHours: number }[]> = {};
+  for (const b of balanceRows) {
+    if (!balancesByEmp[b.employeeId]) balancesByEmp[b.employeeId] = [];
+    balancesByEmp[b.employeeId].push({ shiftCode: b.shiftCodeCode, balanceHours: b.balanceHours });
+  }
+
+  res.json(
+    rows.map((r) => ({
+      ...r,
+      holidayBalances: balancesByEmp[r.id] ?? [],
+    }))
+  );
 });
 
 router.post("/employees", requireAdmin, async (req, res): Promise<void> => {
@@ -50,7 +82,7 @@ router.post("/employees", requireAdmin, async (req, res): Promise<void> => {
       notes: data.notes ?? null,
     })
     .returning();
-  res.status(201).json(row);
+  res.status(201).json({ ...row, holidayBalances: [] });
 });
 
 router.get("/employees/:id", async (req, res): Promise<void> => {
@@ -59,15 +91,12 @@ router.get("/employees/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
-  const [row] = await db
-    .select()
-    .from(employeesTable)
-    .where(eq(employeesTable.id, params.data.id));
-  if (!row) {
+  const emp = await getEmployeeWithBalances(params.data.id);
+  if (!emp) {
     res.status(404).json({ error: "Employee not found" });
     return;
   }
-  res.json(row);
+  res.json(emp);
 });
 
 router.put("/employees/:id", requireAdmin, async (req, res): Promise<void> => {
@@ -115,7 +144,8 @@ router.put("/employees/:id", requireAdmin, async (req, res): Promise<void> => {
     res.status(404).json({ error: "Employee not found" });
     return;
   }
-  res.json(row);
+  const emp = await getEmployeeWithBalances(row.id);
+  res.json(emp);
 });
 
 router.delete("/employees/:id", requireAdmin, async (req, res): Promise<void> => {
@@ -162,7 +192,22 @@ router.put("/employees/:id/counters", requireAdmin, async (req, res): Promise<vo
     res.status(404).json({ error: "Employee not found" });
     return;
   }
-  res.json(row);
+
+  // Handle holiday balances upsert for other holiday codes
+  if (data.holidayBalances && typeof data.holidayBalances === "object") {
+    for (const [code, balance] of Object.entries(data.holidayBalances as Record<string, number>)) {
+      await db
+        .insert(employeeHolidayBalancesTable)
+        .values({ employeeId: params.data.id, shiftCodeCode: code, balanceHours: balance })
+        .onConflictDoUpdate({
+          target: [employeeHolidayBalancesTable.employeeId, employeeHolidayBalancesTable.shiftCodeCode],
+          set: { balanceHours: balance, updatedAt: new Date() },
+        });
+    }
+  }
+
+  const emp = await getEmployeeWithBalances(params.data.id);
+  res.json(emp);
 });
 
 export default router;

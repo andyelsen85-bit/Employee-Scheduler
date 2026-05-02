@@ -1,9 +1,9 @@
 import { Layout } from "@/components/layout";
 import { useGetDashboardSummary, getGetDashboardSummaryQueryKey } from "@workspace/api-client-react";
 import { useState } from "react";
-import { format, startOfMonth, subMonths, addMonths } from "date-fns";
+import { format, subMonths, addMonths } from "date-fns";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, AlertTriangle, Users, Building, ShieldAlert, Shield } from "lucide-react";
+import { ChevronLeft, ChevronRight, AlertTriangle, Building, ShieldAlert, Shield } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -23,14 +23,14 @@ export default function Dashboard() {
   const prevMonth = () => setCurrentDate(subMonths(currentDate, 1));
   const nextMonth = () => setCurrentDate(addMonths(currentDate, 1));
 
-  // Build employee name lookup from stats
   const empName = (id: number | null | undefined): string => {
     if (id == null) return "—";
-    return (summary?.employeeStats as any[])?.find((e: any) => e.employeeId === id)?.name ?? `#${id}`;
+    const stat = summary?.employeeStats.find((e) => e.employeeId === id);
+    return stat?.name ?? `#${id}`;
   };
 
   const peakOnsite = summary?.dailyOnsiteRate && summary.dailyOnsiteRate.length > 0
-    ? Math.max(...(summary.dailyOnsiteRate as any[]).map((d: any) => d.onsiteCount))
+    ? Math.max(...summary.dailyOnsiteRate.map((d) => d.onsiteCount))
     : 0;
 
   return (
@@ -53,22 +53,21 @@ export default function Dashboard() {
         </div>
 
         {isLoading ? (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <Skeleton className="h-32 rounded-xl" />
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             <Skeleton className="h-32 rounded-xl" />
             <Skeleton className="h-32 rounded-xl" />
             <Skeleton className="h-32 rounded-xl" />
           </div>
         ) : summary ? (
           <>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Planning Status</CardTitle>
                   <ShieldAlert className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold capitalize">{(summary as any).planningStatus}</div>
+                  <div className="text-2xl font-bold capitalize">{summary.planningStatus}</div>
                 </CardContent>
               </Card>
               <Card>
@@ -77,21 +76,12 @@ export default function Dashboard() {
                   <AlertTriangle className="h-4 w-4 text-destructive" />
                 </CardHeader>
                 <CardContent>
-                  <div className={`text-2xl font-bold ${(summary as any).totalViolations > 0 ? "text-destructive" : ""}`}>
-                    {(summary as any).totalViolations}
+                  <div className={`text-2xl font-bold ${summary.totalViolations > 0 ? "text-destructive" : ""}`}>
+                    {summary.totalViolations}
                   </div>
-                  {(summary as any).totalViolations === 0 && (summary as any).planningStatus === "none" && (
+                  {summary.totalViolations === 0 && summary.planningStatus === "none" && (
                     <p className="text-xs text-muted-foreground mt-1">No planning generated</p>
                   )}
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Employees</CardTitle>
-                  <Users className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{(summary as any).employeeStats.length}</div>
                 </CardContent>
               </Card>
               <Card>
@@ -108,81 +98,51 @@ export default function Dashboard() {
               </Card>
             </div>
 
-            <div className="grid gap-6 md:grid-cols-2 flex-1 min-h-0">
-              <Card className="flex flex-col">
-                <CardHeader>
-                  <CardTitle>Employee Stats</CardTitle>
-                </CardHeader>
-                <CardContent className="flex-1 overflow-hidden p-0">
-                  <ScrollArea className="h-[400px]">
-                    <div className="px-6 pb-6 space-y-4">
-                      {(summary as any).employeeStats.map((stat: any) => (
-                        <div key={stat.employeeId} className="flex items-center justify-between p-3 border rounded-lg">
-                          <div>
-                            <div className="font-medium">{stat.name}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {stat.totalPlannedHours}h planned · {stat.plannedOnsiteDays}d onsite · {stat.plannedHomeworkDays}d HW · {stat.plannedCoworkDays}d CW
-                            </div>
+            <Card className="flex flex-col flex-1 min-h-0">
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle>Permanence — {format(currentDate, "MMMM yyyy")}</CardTitle>
+                <Shield className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent className="flex-1 overflow-hidden p-0">
+                <ScrollArea className="h-[400px]">
+                  <div className="px-6 pb-6 space-y-3">
+                    {summary.permanenceSchedule.length === 0 && (
+                      <p className="text-sm text-muted-foreground py-4">No permanence assignments for this month.</p>
+                    )}
+                    {summary.permanenceSchedule.map((week) => (
+                      <div key={week.weekNumber} className="border rounded-lg p-3">
+                        <div className="text-xs font-semibold text-muted-foreground mb-2">
+                          W{week.weekNumber} · {format(new Date(week.weekStart), "MMM d")} – {format(new Date(week.weekEnd), "MMM d")}
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-blue-600 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5">G1</span>
+                            <span className="text-sm font-medium">
+                              {empName(week.g1EmployeeId)}
+                            </span>
+                            {week.g1Manual && (
+                              <Badge variant="outline" className="text-[9px] px-1 py-0">manual</Badge>
+                            )}
                           </div>
-                          <div className="flex gap-2">
-                            <Badge variant={stat.prmCounter < 0 ? "destructive" : "secondary"}>
-                              PRM: {stat.prmCounter > 0 ? "+" : ""}{stat.prmCounter}h
-                            </Badge>
-                            <Badge variant="outline">Hol: {stat.holidayHoursRemaining}h</Badge>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-purple-600 bg-purple-50 border border-purple-200 rounded px-1.5 py-0.5">G2</span>
+                            <span className="text-sm font-medium">
+                              {empName(week.g2EmployeeId)}
+                            </span>
+                            {week.g2Manual && (
+                              <Badge variant="outline" className="text-[9px] px-1 py-0">manual</Badge>
+                            )}
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                </CardContent>
-              </Card>
-
-              <Card className="flex flex-col">
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <CardTitle>Permanence — {format(currentDate, "MMMM yyyy")}</CardTitle>
-                  <Shield className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent className="flex-1 overflow-hidden p-0">
-                  <ScrollArea className="h-[400px]">
-                    <div className="px-6 pb-6 space-y-3">
-                      {(summary as any).permanenceSchedule?.length === 0 && (
-                        <p className="text-sm text-muted-foreground py-4">No permanence assignments for this month.</p>
-                      )}
-                      {(summary as any).permanenceSchedule?.map((week: any) => (
-                        <div key={week.weekNumber} className="border rounded-lg p-3">
-                          <div className="text-xs font-semibold text-muted-foreground mb-2">
-                            W{week.weekNumber} · {format(new Date(week.weekStart), "MMM d")} – {format(new Date(week.weekEnd), "MMM d")}
-                          </div>
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-semibold uppercase tracking-wide text-blue-600 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5">G1</span>
-                              <span className="text-sm font-medium">
-                                {empName(week.g1EmployeeId)}
-                              </span>
-                              {week.g1Manual && (
-                                <Badge variant="outline" className="text-[9px] px-1 py-0">manual</Badge>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-semibold uppercase tracking-wide text-purple-600 bg-purple-50 border border-purple-200 rounded px-1.5 py-0.5">G2</span>
-                              <span className="text-sm font-medium">
-                                {empName(week.g2EmployeeId)}
-                              </span>
-                              {week.g2Manual && (
-                                <Badge variant="outline" className="text-[9px] px-1 py-0">manual</Badge>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                </CardContent>
-              </Card>
-            </div>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </CardContent>
+            </Card>
 
             {/* Violations detail */}
-            {(summary as any).violations?.length > 0 && (
+            {summary.violations.length > 0 && (
               <Card>
                 <CardHeader>
                   <CardTitle className="text-destructive flex items-center gap-2">
@@ -192,9 +152,9 @@ export default function Dashboard() {
                 </CardHeader>
                 <CardContent>
                   <ul className="space-y-1 text-sm">
-                    {(summary as any).violations.map((v: any, i: number) => (
+                    {summary.violations.map((v, i) => (
                       <li key={i} className="flex gap-2 items-start">
-                        <span className="text-destructive font-mono text-xs mt-0.5 shrink-0">{v.date}</span>
+                        <span className="text-destructive font-mono text-xs mt-0.5 shrink-0">{v.type}</span>
                         <span>{v.message}</span>
                       </li>
                     ))}

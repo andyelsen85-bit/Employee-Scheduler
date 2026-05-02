@@ -5,6 +5,8 @@ import {
   getListEmployeesQueryKey,
   useCreateEmployee,
   useDeleteEmployee,
+  useListShiftCodes,
+  getListShiftCodesQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -34,6 +36,13 @@ export default function Employees() {
   const { data: employees, isLoading } = useListEmployees({
     query: { queryKey: getListEmployeesQueryKey() },
   });
+  const { data: shiftCodes } = useListShiftCodes({
+    query: { queryKey: getListShiftCodesQueryKey() },
+  });
+
+  const activeHolidayCodes = shiftCodes?.filter(
+    (sc) => sc.type === "holiday" && sc.hours > 0 && sc.code !== "C0" && sc.isActive
+  ) ?? [];
 
   const createEmployee = useCreateEmployee();
   const deleteEmployee = useDeleteEmployee();
@@ -136,9 +145,16 @@ export default function Employees() {
                           </Badge>
                         )}
                       </div>
-                      <div className="text-xs text-muted-foreground mt-0.5 flex gap-3">
+                      <div className="text-xs text-muted-foreground mt-0.5 flex flex-wrap gap-3">
                         <span>PRM: <span className={emp.prmCounter < 0 ? "text-destructive font-medium" : ""}>{emp.prmCounter.toFixed(1)}h</span></span>
-                        <span>Holiday: {emp.holidayHoursRemaining.toFixed(1)}h</span>
+                        <span>C0: {emp.holidayHoursRemaining.toFixed(1)}h</span>
+                        {activeHolidayCodes.map((sc) => {
+                          const balance = emp.holidayBalances.find((b) => b.shiftCode === sc.code);
+                          const hours = balance?.balanceHours ?? 0;
+                          return (
+                            <span key={sc.code}>{sc.code}: <span className={hours < 0 ? "text-destructive font-medium" : ""}>{hours.toFixed(1)}h</span></span>
+                          );
+                        })}
                         <span>Homework: {emp.homeworkDaysUsedThisYear}d</span>
                         <span>{emp.contractPercent}%</span>
                       </div>
