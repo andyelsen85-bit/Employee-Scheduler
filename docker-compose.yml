@@ -23,6 +23,8 @@ services:
       PORT: 3000
       NODE_ENV: production
       DATABASE_URL: postgresql://hr_planner:hr_planner_secret@postgres:5432/hr_planner
+    volumes:
+      - api_data:/app/data
     depends_on:
       postgres:
         condition: service_healthy
@@ -39,3 +41,4 @@ services:
 
 volumes:
   postgres_data:
+  api_data:
