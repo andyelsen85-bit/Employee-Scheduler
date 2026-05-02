@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, permanenceOverridesTable, employeesTable } from "@workspace/db";
+import { db, permanenceOverridesTable, permanenceRotationOrderTable, employeesTable } from "@workspace/db";
 import { and, eq, isNotNull } from "drizzle-orm";
 
 export const permanenceRouter = Router();
@@ -19,6 +19,61 @@ function getISOWeekStart(year: number, week: number): string {
   return weekStart.toISOString().split("T")[0];
 }
 
+permanenceRouter.get("/rotation-order", async (req, res) => {
+  const employees = await db.select({
+    id: employeesTable.id,
+    name: employeesTable.name,
+    permanenceGroup: employeesTable.permanenceGroup,
+  }).from(employeesTable).where(isNotNull(employeesTable.permanenceGroup));
+
+  const rotationOrders = await db.select().from(permanenceRotationOrderTable);
+  const orderMap = new Map(rotationOrders.map(r => [r.employeeId, r.rotationOrder]));
+
+  const result = employees.map(e => ({
+    employeeId: e.id,
+    name: e.name,
+    permanenceGroup: e.permanenceGroup,
+    rotationOrder: orderMap.get(e.id) ?? e.id,
+  }));
+
+  return res.json(result);
+});
+
+permanenceRouter.put("/rotation-order", async (req, res) => {
+  const items = req.body as Array<{ employeeId: number; rotationOrder: number }>;
+  if (!Array.isArray(items)) {
+    return res.status(400).json({ error: "Expected array of {employeeId, rotationOrder}" });
+  }
+
+  for (const item of items) {
+    const existing = await db.select().from(permanenceRotationOrderTable)
+      .where(eq(permanenceRotationOrderTable.employeeId, item.employeeId));
+
+    if (existing.length > 0) {
+      await db.update(permanenceRotationOrderTable)
+        .set({ rotationOrder: item.rotationOrder })
+        .where(eq(permanenceRotationOrderTable.employeeId, item.employeeId));
+    } else {
+      await db.insert(permanenceRotationOrderTable).values({
+        employeeId: item.employeeId,
+        rotationOrder: item.rotationOrder,
+      });
+    }
+  }
+
+  return res.json({ ok: true });
+});
+
+permanenceRouter.post("/:year/recalculate", async (req, res) => {
+  const year = parseInt(req.params.year, 10);
+  if (isNaN(year)) return res.status(400).json({ error: "Invalid year" });
+
+  await db.delete(permanenceOverridesTable)
+    .where(eq(permanenceOverridesTable.year, year));
+
+  return res.json({ ok: true, year });
+});
+
 permanenceRouter.get("/:year", async (req, res) => {
   const year = parseInt(req.params.year, 10);
   if (isNaN(year)) return res.status(400).json({ error: "Invalid year" });
@@ -34,8 +89,16 @@ permanenceRouter.get("/:year", async (req, res) => {
   const overrides = await db.select().from(permanenceOverridesTable)
     .where(eq(permanenceOverridesTable.year, year));
 
-  const group1 = employees.filter(e => e.permanenceGroup === 1);
-  const group2 = employees.filter(e => e.permanenceGroup === 2);
+  const rotationOrders = await db.select().from(permanenceRotationOrderTable);
+  const orderMap = new Map(rotationOrders.map(r => [r.employeeId, r.rotationOrder]));
+
+  // Sort each group by rotation order (fallback to employee id)
+  const group1 = employees
+    .filter(e => e.permanenceGroup === 1)
+    .sort((a, b) => (orderMap.get(a.id) ?? a.id) - (orderMap.get(b.id) ?? b.id));
+  const group2 = employees
+    .filter(e => e.permanenceGroup === 2)
+    .sort((a, b) => (orderMap.get(a.id) ?? a.id) - (orderMap.get(b.id) ?? b.id));
 
   function rotateAssign(group: typeof group1, weekIdx: number): number | null {
     if (group.length === 0) return null;

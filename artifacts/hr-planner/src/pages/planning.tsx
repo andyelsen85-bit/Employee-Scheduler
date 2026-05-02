@@ -2,14 +2,20 @@ import { Layout } from "@/components/layout";
 import { useParams, Link } from "wouter";
 import { useGetMonthPlanning, getGetMonthPlanningQueryKey, useListEmployees, getListEmployeesQueryKey, useListShiftCodes, getListShiftCodesQueryKey, useGeneratePlanning, useGenerateEmployeePlanning, useConfirmPlanning, useUpdatePlanningEntry, useCreatePlanningEntry, useGetMonthlyConfig, getGetMonthlyConfigQueryKey, useListOffices, getListOfficesQueryKey, useListDepartments, getListDepartmentsQueryKey } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, CheckCircle, Wand2, AlertCircle, Trash2, Lock, RefreshCw } from "lucide-react";
-import { useState, Fragment } from "react";
+import { ChevronLeft, ChevronRight, CheckCircle, Wand2, AlertCircle, Trash2, Lock, RefreshCw, Shield } from "lucide-react";
+import { useState, Fragment, useEffect } from "react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+
+interface PermanenceWeek {
+  weekStart: string;
+  g1EmployeeId: number | null;
+  g2EmployeeId: number | null;
+}
 
 export default function Planning() {
   const params = useParams();
@@ -40,6 +46,41 @@ export default function Planning() {
   const { data: departments } = useListDepartments({
     query: { queryKey: getListDepartmentsQueryKey() }
   });
+
+  // Permanence data for the displayed year (for Shield icon)
+  const [permanenceWeeks, setPermanenceWeeks] = useState<PermanenceWeek[]>([]);
+  useEffect(() => {
+    fetch(`/api/permanence/${year}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d?.weeks) setPermanenceWeeks(d.weeks);
+      })
+      .catch(() => {});
+  }, [year]);
+
+  // Build a lookup: employeeId → array of [weekStart, weekEnd] date strings (YYYY-MM-DD).
+  // Using date ranges rather than ISO week numbers avoids year-boundary edge cases where
+  // early January days belong to the previous ISO year's week 52/53.
+  const permanenceDateRangesByEmp = new Map<number, Array<[string, string]>>();
+  for (const wk of permanenceWeeks) {
+    const weekEnd = (() => {
+      const d = new Date(wk.weekStart + "T00:00:00");
+      d.setDate(d.getDate() + 6);
+      return format(d, "yyyy-MM-dd");
+    })();
+    const range: [string, string] = [wk.weekStart, weekEnd];
+    for (const empId of [wk.g1EmployeeId, wk.g2EmployeeId]) {
+      if (empId == null) continue;
+      if (!permanenceDateRangesByEmp.has(empId)) permanenceDateRangesByEmp.set(empId, []);
+      permanenceDateRangesByEmp.get(empId)!.push(range);
+    }
+  }
+
+  function isEmpOnPermanence(empId: number, dateStr: string): boolean {
+    const ranges = permanenceDateRangesByEmp.get(empId);
+    if (!ranges) return false;
+    return ranges.some(([start, end]) => dateStr >= start && dateStr <= end);
+  }
 
   // Group employees: SPOC → Management → per dept (sorted by order) → ungrouped
   type EmpRow = NonNullable<typeof employees>[number];
@@ -456,6 +497,7 @@ export default function Planning() {
                     const diff = empOfficialHours !== null ? planned - empOfficialHours : null;
                     const over = diff !== null && diff > 0;
                     const under = diff !== null && diff < 0;
+
                     return (
                       <tr key={emp.id} className="border-b hover:bg-muted/30 transition-colors">
                         <td className="px-2 py-2 font-medium sticky left-0 bg-card z-10 border-r shadow-[1px_0_0_0_var(--color-border)]">
@@ -480,10 +522,20 @@ export default function Planning() {
 
                           const hasShift = !!(entry?.shiftCode);
 
+                          // Check if this employee is on permanence duty this week
+                          const isOnPermanence = !weekend && isEmpOnPermanence(emp.id, dateStr);
+
                           return (
                             <td key={day.toISOString()} className={`p-1 border-r text-center relative ${weekend ? 'bg-muted/20' : ''} ${hasViolation ? 'bg-destructive/5' : ''}`}>
                               {!weekend && (
                                 <div className="flex flex-col gap-0.5">
+                                  {/* Permanence shield icon */}
+                                  {isOnPermanence && (
+                                    <div className="flex justify-end pr-0.5">
+                                      <Shield className="h-2.5 w-2.5 text-blue-400/70" aria-label="Permanence duty" />
+                                    </div>
+                                  )}
+
                                   {/* ── Shift code popover ── */}
                                   <Popover>
                                     <PopoverTrigger asChild>
@@ -492,13 +544,10 @@ export default function Planning() {
                                           const style = !hasViolation ? getShiftStyle(entry!.shiftCode!) : null;
                                           return (
                                             <button
-                                              className={`px-2 py-1 text-xs font-semibold rounded w-full border transition-colors hover:opacity-80 ${hasViolation ? 'bg-destructive/10 text-destructive border-destructive/30 ring-1 ring-destructive' : ''} ${entry!.isLocked ? 'ring-1 ring-amber-400' : ''}`}
+                                              className={`text-xs font-bold font-mono rounded px-1 py-0.5 leading-tight text-center border transition-colors hover:opacity-80 w-full ${entry!.isLocked ? 'ring-1 ring-amber-400/60' : ''}`}
                                               style={style ? { backgroundColor: style.bg, color: style.text, borderColor: style.border } : undefined}
                                             >
-                                              <span className="flex items-center justify-center gap-0.5">
-                                                {entry!.isLocked && <Lock className="h-2.5 w-2.5 opacity-60 flex-shrink-0" />}
-                                                {entry!.shiftCode}
-                                              </span>
+                                              {entry!.shiftCode}
                                             </button>
                                           );
                                         }

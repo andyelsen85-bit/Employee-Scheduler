@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { format, parseISO } from "date-fns";
-import { ChevronLeft, ChevronRight, RefreshCw, Shield } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, Shield, ArrowUp, ArrowDown, RotateCcw, ListOrdered } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Layout } from "@/components/layout";
 
 interface WeekEntry {
@@ -29,9 +30,22 @@ interface PermanenceData {
   employees: PermanenceEmployee[];
 }
 
+interface RotationOrderItem {
+  employeeId: number;
+  name: string;
+  permanenceGroup: number | null;
+  rotationOrder: number;
+}
+
 async function fetchPermanence(year: number): Promise<PermanenceData> {
   const res = await fetch(`/api/permanence/${year}`);
   if (!res.ok) throw new Error("Failed to load permanence data");
+  return res.json();
+}
+
+async function fetchRotationOrder(): Promise<RotationOrderItem[]> {
+  const res = await fetch("/api/permanence/rotation-order");
+  if (!res.ok) throw new Error("Failed to load rotation order");
   return res.json();
 }
 
@@ -42,6 +56,20 @@ async function saveOverride(year: number, week: number, group: number, employeeI
     body: JSON.stringify({ employeeId }),
   });
   if (!res.ok) throw new Error("Failed to save override");
+}
+
+async function saveRotationOrder(items: Array<{ employeeId: number; rotationOrder: number }>) {
+  const res = await fetch("/api/permanence/rotation-order", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(items),
+  });
+  if (!res.ok) throw new Error("Failed to save rotation order");
+}
+
+async function recalculate(year: number) {
+  const res = await fetch(`/api/permanence/${year}/recalculate`, { method: "POST" });
+  if (!res.ok) throw new Error("Failed to recalculate");
 }
 
 function getWeekEnd(weekStart: string): string {
@@ -59,6 +87,16 @@ export default function PermanencePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
+
+  // Rotation order dialog state
+  const [rotationDialogOpen, setRotationDialogOpen] = useState(false);
+  const [rotationItems, setRotationItems] = useState<RotationOrderItem[]>([]);
+  const [rotationLoading, setRotationLoading] = useState(false);
+  const [rotationSaving, setRotationSaving] = useState(false);
+
+  // Recalculate state
+  const [recalcConfirmOpen, setRecalcConfirmOpen] = useState(false);
+  const [recalculating, setRecalculating] = useState(false);
 
   function load() {
     setLoading(true);
@@ -83,18 +121,10 @@ export default function PermanencePage() {
     setSaving(key);
     try {
       await saveOverride(currentYear, week, group, employeeId);
-      const updated = { ...data };
-      const weekEntry = updated.weeks.find(w => w.week === week);
-      if (weekEntry) {
-        if (group === 1) {
-          weekEntry.g1EmployeeId = employeeId ?? rotateAssign(updated.employees.filter(e => e.permanenceGroup === 1), week - 1);
-          weekEntry.g1Manual = employeeId !== null;
-        } else {
-          weekEntry.g2EmployeeId = employeeId ?? rotateAssign(updated.employees.filter(e => e.permanenceGroup === 2), week - 1);
-          weekEntry.g2Manual = employeeId !== null;
-        }
-      }
-      setData({ ...updated });
+      // Reload from backend so the displayed auto-assignment reflects the actual
+      // rotation order (client-side recomputation would ignore the saved order).
+      const fresh = await fetchPermanence(currentYear);
+      setData(fresh);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Save failed");
     } finally {
@@ -102,22 +132,83 @@ export default function PermanencePage() {
     }
   }
 
-  function rotateAssign(group: PermanenceEmployee[], weekIdx: number): number | null {
-    if (group.length === 0) return null;
-    return group[weekIdx % group.length].id;
+  async function openRotationDialog() {
+    setRotationDialogOpen(true);
+    setRotationLoading(true);
+    try {
+      const items = await fetchRotationOrder();
+      // Sort by group then by current rotationOrder
+      items.sort((a, b) => {
+        if ((a.permanenceGroup ?? 0) !== (b.permanenceGroup ?? 0)) {
+          return (a.permanenceGroup ?? 0) - (b.permanenceGroup ?? 0);
+        }
+        return a.rotationOrder - b.rotationOrder;
+      });
+      setRotationItems(items);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to load rotation order");
+      setRotationDialogOpen(false);
+    } finally {
+      setRotationLoading(false);
+    }
+  }
+
+  function moveRotationItem(group: number, index: number, direction: -1 | 1) {
+    const groupItems = rotationItems.filter(i => i.permanenceGroup === group);
+    const otherItems = rotationItems.filter(i => i.permanenceGroup !== group);
+    const newIndex = index + direction;
+    if (newIndex < 0 || newIndex >= groupItems.length) return;
+    const reordered = [...groupItems];
+    [reordered[index], reordered[newIndex]] = [reordered[newIndex], reordered[index]];
+    const updated = reordered.map((item, idx) => ({ ...item, rotationOrder: idx }));
+    setRotationItems([...otherItems, ...updated].sort((a, b) => {
+      if ((a.permanenceGroup ?? 0) !== (b.permanenceGroup ?? 0)) {
+        return (a.permanenceGroup ?? 0) - (b.permanenceGroup ?? 0);
+      }
+      return a.rotationOrder - b.rotationOrder;
+    }));
+  }
+
+  async function handleSaveRotationOrder() {
+    setRotationSaving(true);
+    try {
+      await saveRotationOrder(rotationItems.map(i => ({ employeeId: i.employeeId, rotationOrder: i.rotationOrder })));
+      setRotationDialogOpen(false);
+      // Reload data to reflect new rotation
+      load();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to save rotation order");
+    } finally {
+      setRotationSaving(false);
+    }
+  }
+
+  async function handleRecalculate() {
+    setRecalcConfirmOpen(false);
+    setRecalculating(true);
+    try {
+      await recalculate(currentYear);
+      load();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Recalculate failed");
+    } finally {
+      setRecalculating(false);
+    }
   }
 
   const empById = new Map(data?.employees.map(e => [e.id, e]));
   const group1Emps = data?.employees.filter(e => e.permanenceGroup === 1) ?? [];
   const group2Emps = data?.employees.filter(e => e.permanenceGroup === 2) ?? [];
 
-  const today = format(new Date(), "yyyy-MM-dd");
   const currentWeekStart = (() => {
     const d = new Date();
     const day = (d.getDay() + 6) % 7;
     d.setDate(d.getDate() - day);
     return format(d, "yyyy-MM-dd");
   })();
+
+  const rotGroup1 = rotationItems.filter(i => i.permanenceGroup === 1);
+  const rotGroup2 = rotationItems.filter(i => i.permanenceGroup === 2);
 
   return (
     <Layout>
@@ -137,6 +228,20 @@ export default function PermanencePage() {
           <span className="font-semibold text-lg w-16 text-center">{currentYear}</span>
           <Button variant="outline" size="icon" onClick={() => goYear(1)}>
             <ChevronRight className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" size="sm" onClick={openRotationDialog} disabled={loading}>
+            <ListOrdered className="h-4 w-4 mr-2" />
+            Rotation Order
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setRecalcConfirmOpen(true)}
+            disabled={loading || recalculating}
+            className="text-amber-700 border-amber-400 hover:bg-amber-50"
+          >
+            <RotateCcw className={`h-4 w-4 mr-2 ${recalculating ? "animate-spin" : ""}`} />
+            Recalculate
           </Button>
           <Button variant="outline" size="icon" onClick={load} disabled={loading}>
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
@@ -255,6 +360,97 @@ export default function PermanencePage() {
         </div>
       )}
     </div>
+
+    {/* Rotation Order Dialog */}
+    <Dialog open={rotationDialogOpen} onOpenChange={setRotationDialogOpen}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ListOrdered className="h-5 w-5" />
+            Rotation Order
+          </DialogTitle>
+        </DialogHeader>
+
+        {rotationLoading ? (
+          <div className="py-8 text-center text-muted-foreground text-sm">Loading…</div>
+        ) : (
+          <div className="space-y-5">
+            {[1, 2].map(group => {
+              const items = group === 1 ? rotGroup1 : rotGroup2;
+              return (
+                <div key={group}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className={`h-2.5 w-2.5 rounded-full ${group === 1 ? "bg-blue-500/70" : "bg-purple-500/70"}`} />
+                    <span className="font-semibold text-sm">Permanence {group}</span>
+                    <span className="text-xs text-muted-foreground">({items.length} members)</span>
+                  </div>
+                  {items.length === 0 ? (
+                    <p className="text-xs text-muted-foreground pl-4">No members assigned to this group.</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {items.map((item, idx) => (
+                        <div key={item.employeeId} className="flex items-center gap-2 rounded-md border px-3 py-2 bg-muted/20">
+                          <span className="text-xs font-mono text-muted-foreground w-5 text-center">{idx + 1}</span>
+                          <span className="flex-1 text-sm">{item.name}</span>
+                          <button
+                            onClick={() => moveRotationItem(group, idx, -1)}
+                            disabled={idx === 0}
+                            className="p-0.5 rounded text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
+                            title="Move up"
+                          >
+                            <ArrowUp className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => moveRotationItem(group, idx, 1)}
+                            disabled={idx === items.length - 1}
+                            className="p-0.5 rounded text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
+                            title="Move down"
+                          >
+                            <ArrowDown className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setRotationDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handleSaveRotationOrder} disabled={rotationSaving || rotationLoading}>
+            {rotationSaving ? "Saving…" : "Save Order"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    {/* Recalculate Confirmation Dialog */}
+    <Dialog open={recalcConfirmOpen} onOpenChange={setRecalcConfirmOpen}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <RotateCcw className="h-5 w-5 text-amber-600" />
+            Recalculate {currentYear}?
+          </DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          This will clear all manual overrides for <strong>{currentYear}</strong> and regenerate every week assignment using the current rotation order. This action cannot be undone.
+        </p>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setRecalcConfirmOpen(false)}>Cancel</Button>
+          <Button
+            onClick={handleRecalculate}
+            className="bg-amber-600 hover:bg-amber-700 text-white"
+          >
+            <RotateCcw className="h-4 w-4 mr-2" />
+            Yes, Recalculate
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
     </Layout>
   );
 }
