@@ -278,31 +278,209 @@ Sensitive fields (SMTP password) are encrypted at rest using AES-256-GCM keyed o
 
 ## Planning Engine
 
-The core of the application is `artifacts/api-server/src/lib/planner.ts`. Given a (year, month) it:
+The core of the application is `artifacts/api-server/src/lib/planner.ts` (~1500 lines). It is a deterministic-with-randomised-tiebreaks scheduler that produces, in a single pass, one shift code per employee per working day for the requested month.
 
-1. Loads employees, weekly templates, locked entries, requested days off, public holidays, monthly config, shift codes, offices and desk eligibility.
-2. Computes per-employee monthly target = `contractualHours × contractPercent`.
-3. Pre-fills:
-   - Weekends → empty.
-   - Public holidays → `C0` (pro-rated by contract% — see [holiday-scaling rule](#holiday-scaling-rule)).
-   - Locked entries (manual pins, approved demands, previous-month overflow).
-   - Configured `JL` (CCT-FHL compensation) days from the monthly config.
-4. For every remaining working day per employee, picks the highest-priority eligible code from the weekly template under the constraints below.
-5. Distributes additional `JL` substitution days when the employee's working-day count yields too few hours to reach the monthly target.
-6. Enforces role coverage every day (SPOC + Management + Permanence L1 + Permanence L2 must be on-site).
-7. Caps on-site assignments by office desk capacity (and per-employee desk eligibility).
-8. Records violations (`< 50% onsite`, overtime overshoot, missing role coverage…) attached to the month.
+### Inputs
 
-Key helpers in `planner.ts`:
+| Input                         | Source                                                       |
+|-------------------------------|--------------------------------------------------------------|
+| Employees                     | `employees` table — contract %, country, role flags, balances|
+| Allowed shift codes / desk eligibility | `office_employees`, employees `allowed_shift_codes` |
+| Weekly templates              | `week_templates` — preferred code per `(employee, weekday)`  |
+| Day-code preferences          | `employees.day_code_preferences` — per-weekday code list     |
+| Locked entries                | Manual pins + approved demands + previous-month overflow     |
+| Requested days off            | Body of `POST /planning/:y/:m/generate`                      |
+| Public holidays               | `public_holidays` table                                      |
+| Monthly config                | `monthly_configs` — contractual hours + JL day count         |
+| Permanence assignments        | Pre-computed (yearly rotation + manual overrides)            |
+| SPOC rotation                 | Pre-computed yearly rotation                                 |
+| Previous-month overflow       | JL count + shift hours from neighbouring months              |
 
-| Function                      | Responsibility                                                 |
-|-------------------------------|----------------------------------------------------------------|
-| `generatePlanning`            | Top-level entry point used by `POST /planning/:y/:m/generate`  |
-| `generateEmployeePlanning`    | Single-employee re-generation, preserves coverage of others    |
-| `hoursForCode`                | Returns hours for a code, applying contract-% scaling          |
-| `pickShiftCodeForDay`         | Constraint-satisfying picker (template priority + caps)        |
-| `distributeJlDays`            | Adds JL substitution days when monthly hours fall short        |
-| `checkViolations`             | Builds the per-month violation list returned by the API        |
+### Output
+
+```ts
+{ entries: PlanningEntryInput[], violations: PlanningViolation[] }
+```
+
+One entry per `(employee, day)` for every working day in scope, plus a list of structural violations.
+
+### Key concepts
+
+- **Working day** — Mon–Fri minus public holidays.
+- **This month's planning days** — working days whose ISO week starts inside this month.
+- **Overflow days** — working days *in the next month* that complete the last ISO week of this month. They are planned now (visible when the user opens the next month) but **do not count** against this month's hour budget.
+- **Locked entry** — an entry the user has pinned, an approved demand, or an overflow from the previous month. Locked entries survive regeneration; the planner skips their slot but still folds their hours into the budget.
+- **JL** — CCT-FHL paid compensation day (Luxembourg collective agreement). Two flavours:
+  - *Pre-config JL* — the monthly config says "every employee gets N JL days this month".
+  - *Substitution JL* — added by the planner when an employee would otherwise overshoot their monthly target.
+- **PRM counter** — running over/under against contractual hours. **Tracked but never used to shrink the auto-planner's monthly target** (this used to cause the "double JL" bug — see [§ Holiday-scaling rule](#holiday-scaling-rule)).
+
+---
+
+### Phase 0 — Set-up & target calculation
+
+1. Compute the calendar:
+   - All working days of the month (`workingDays`).
+   - This-month days that belong to ISO weeks starting in this month (`thisMonthPlanningDays`).
+   - Overflow working days into the next month (`overflowWorkingDays`).
+2. Build a set of **locked slots** keyed by `${employeeId}-${date}` so they can be skipped efficiently in Phase 2.
+3. Resolve **permanence assignments per ISO week** — preferring the externally-supplied yearly rotation (with manual overrides) over an internal fallback.
+4. Detect **satellite offices** (offices with at least one SPOC but where some members are SPOC-only — e.g. Wiltz). Build a per-employee, per-week `weeklyPreferredOffice` map that rotates multi-office employees so colleagues cover different offices in alternating weeks. SPOC-rotation employees override their preferred office for the week they are designated.
+5. Compute pre-config **JL distribution** with `distributeJlDays`:
+   - Each employee gets `monthlyConfig.jlDays` JL days, **minus** those already locked manually and **minus** previous-month overflow JL.
+   - Days are picked weighted by current per-day load (avoid clustering all JLs on the same day) with a random tiebreak.
+   - **Preference**: a JL is placed on a weekday the employee already prefers JL on, so an employee with a "JL Wednesdays" preference doesn't accidentally get both a pre-config JL on Tuesday *and* their preferred JL on Wednesday.
+6. Compute per-employee **monthly target**: `target = monthlyContractualHours × contractPercent / 100`. PRM counter is **not** subtracted from this target.
+
+---
+
+### Phase 1 — Per-employee pre-determination
+
+For each employee:
+
+1. **Account for locked entries** in this month's planning days:
+   - `lockedCurrentShiftHours` — hours already committed by manual shift overrides.
+   - `lockedCurrentJlCount`, `lockedC0Count` — non-shift days already committed.
+2. Build the **candidate shift days** = `thisMonthPlanningDays \ jlDates \ requestedOff \ lockedDates`.
+3. Compute the **typical shift length** for this employee:
+   - `fteDaily = monthlyContractualHours / candidateShiftDays.length` (the "what a 100% would do today" reference).
+   - `typicalShiftHours` = the regular code in `allowedShiftCodes` whose hours is closest to `fteDaily`.
+   - For each candidate day, `getExpectedHours(date)` = average hours of the unique day-code preferences for that weekday (or `typicalShiftHours` if none).
+   - `weightedAvgHours` = average of `getExpectedHours` across all candidate days. This handles employees with mixed-length preferences (e.g. Ben prefers TT4 4h on Wed and X80 8h on Mon).
+4. Compute **how many JL substitutions** are needed (the trickiest piece):
+
+   ```text
+   contractRatio    = contractPercent / 100
+   proportionalJL   = ceil(thisMonthPlanningDays × (1 − contractRatio))
+                      − lockedC0Count − preConfigJlCount
+   effectiveTarget  = max(0, target
+                           − prevMonthOverflowShiftHours
+                           − lockedCurrentShiftHours)
+
+   if weightedAvgHours > 0 AND
+      sum(getExpectedHours over candidate days) > effectiveTarget:
+       shiftDaysNeeded = ceil(effectiveTarget / weightedAvgHours)
+       neededJL        = candidateShiftDays.length − shiftDaysNeeded
+   else:
+       neededJL = proportionalJL    # fallback for pure-JL employees, etc.
+
+   neededJL -= prevMonthOverflowJlCount
+   neededJL -= lockedCurrentJlCount
+   ```
+
+   Then JL preference weekdays are honoured **as a floor**: `neededJL = max(neededJL, count of candidate days falling on a JL-preference weekday)`. Any resulting hour shortfall is absorbed by the PRM counter rather than left as an unfulfilled preference.
+
+5. **Pick the actual JL substitution dates** (`pickJlSubstitutionDates`) using a 3-tier priority:
+   - **Tier 1**: weekdays the employee explicitly prefers as JL.
+   - **Tier 2**: weekdays with no preference at all.
+   - **Tier 3** (last resort): weekdays with a non-JL preference, sorted by **highest-hour days first** so the fewest preference-days are sacrificed.
+   Each tier is shuffled before truncation for fairness across regenerations.
+6. Overflow days that fall on a JL-preference weekday also become JL substitutions (so the next-month preview is consistent).
+7. Compute the employee's **shift days** = candidate days minus JL substitutions, plus overflow days minus JL substitutions.
+8. Predetermine the **location type per ISO week** (`predetermineWeeklyTypes`) so the employee stays at one place all week:
+   - Default ratio `0.5` (or `employee.onsiteWeekRatio` when set).
+   - `targetOnsiteWeeks = floor(numWeeks × ratio)`. Remainder is split between homework and cowork (homework first when both eligible, otherwise whichever is allowed).
+   - Result is shuffled across the actual week keys → which week is onsite vs remote is randomised.
+   - Employees ineligible for any remote work are forced fully onsite.
+9. **Permanence override**: any week where this employee is the designated permanence person is **forced to onsite** — the planner will never schedule a remote week that violates permanence duty.
+10. Map (week → type) down to (day → type) → `empDayTypeMap[employee][date]`.
+
+---
+
+### Phase 2 — Day-by-day assignment
+
+Iterates `(date, employee)` in calendar order. For each cell:
+
+1. **Skip** if weekend, public holiday, or part of an out-of-scope partial week.
+2. **Locked slot** → keep as-is, but still update the running balances (planned hours, onsite/remote counters) so subsequent decisions and violation checks see them.
+3. **Requested-day-off** → emit a locked `C0` (holiday) entry, hours pro-rated by contract%.
+4. **Pre-config JL** (from Phase 0 distribution) → emit `JL`.
+5. **JL substitution** (from Phase 1 picking) → emit `JL`.
+6. Otherwise compute the **daily target hours**:
+   - `dailyTarget = remainingHours / remainingShiftDays` (a running average that self-corrects as days are filled).
+   - Overflow days use a fixed rate `baseTarget / thisMonthShiftCount` so they don't drain this month's running budget.
+7. **Resolve the day's location type** (`onsite` / `homework` / `cowork`):
+   - Start with the pre-determined week type.
+   - Look at the employee's **day-code preferences** for this weekday and deduplicate by code.
+   - If the preferences are *single-type* (all onsite, all homework, or all cowork) they are honoured as an explicit per-day override, even on a remote week.
+   - If they are *mixed-type* (e.g. Mon = X80 onsite *and* TT8 homework), filter to those matching the pre-determined week type to keep the week grouped; if none match, fall back to all preferences.
+   - **Round-robin** through the surviving preferences per `(employee, weekday)` so multiple codes alternate fairly across weeks.
+8. **Reserve a desk** (only if going onsite):
+   - **Full-week onsite** → reserve from the *weekly* desk pool: same desk every day this week.
+   - **Partial-week onsite** (today is an onsite override on a remote week) → reserve from the *daily* desk pool: desk freed tomorrow.
+   - Locked entries' desks are pre-loaded so a single-employee regeneration cannot steal a colleague's reserved desk.
+   - Office order = preferred-office-first → satellite-rotation override → others.
+   - Within a desk pool: HA-desks preferred for employees who flagged `prefersHeightAdjustableDesk`, otherwise HA desks are kept free for those who need them.
+   - If no desk is available in any of the employee's offices, `canGoOnsite = false` and the day falls back to homework/cowork (or onsite anyway, with a violation, if no remote option exists).
+9. **Pick the actual code** (`bestCodeByTarget`):
+   - Filter `allowedShiftCodes` by the resolved type.
+   - Sort by `|hours − dailyTarget|`.
+   - On a tie, **prefer the code at-or-below** the target (avoid hour overshoot); if both are on the same side, prefer the higher one (avoid undershoot).
+   - When the day's preference matches the resolved type, the preferred code wins outright.
+   - **Day-pref forces remote**: an explicit homework/cowork day-preference *overrides* `homeworkEligible`/`coworkEligible` flags so deliberately-set codes are honoured (subject to the 35-day annual homework cap for BE/DE/FR).
+10. Increment counters (`onsiteCount`, `homeworkCount`, `nonOnsiteWorkCount`, `plannedHours`, decrement `remainingHours` / `remainingShiftDays`) and emit the entry.
+
+---
+
+### Phase 3 — Promote homework → onsite where a desk is free
+
+Second pass over generated entries:
+
+- For each `homework` entry on a week that **was originally pre-determined as onsite** (i.e. it became homework only because no desk was free in Phase 2), look again at the *daily* desk pool — a colleague may have left a desk free that day.
+- If a desk is now available, upgrade the entry to onsite with that daily desk and rebalance the counters.
+- **Cowork is never touched** (cowork = external coworking facility, intentional).
+- **Pre-determined homework weeks are never promoted** (Phase 1 deliberately allocated them to hit the 50% on-site target).
+- **Explicit homework/cowork day-preferences are respected** (user intent).
+
+---
+
+### Phase 4 — Hour-correction pass
+
+Even after Phases 1–3, an employee may still slightly overshoot their monthly target (for example because all of their codes are 9h and there is one extra working day this month). Phase 4 fixes that:
+
+```text
+for each employee:
+   plannedThisMonth = sum of hours for entries (generated + locked) whose date starts with `${year}-${month}-`
+   overshoot = plannedThisMonth − baseTarget
+   while overshoot > 4 hours:
+       pick a non-locked, non-permanence shift day (homework/cowork preferred over onsite)
+       convert it to JL
+       overshoot -= entryHours
+```
+
+The 4-hour tolerance (`HOUR_OVERSHOOT_TOLERANCE`) is roughly half a working day — it prevents oscillation and accepts small residuals that the PRM counter will absorb at confirm time.
+
+The hours sum **includes locked entries** so manually pinned overshoots are also corrected.
+
+---
+
+### Violation pass
+
+A separate pass produces a list of structural violations attached to the month, surfaced in the planning grid header:
+
+| Violation                  | Trigger                                                                          |
+|----------------------------|----------------------------------------------------------------------------------|
+| `missing_spoc`             | A working day has no SPOC employee on-site                                       |
+| `missing_management`       | A working day has no Management employee on-site                                 |
+| `missing_perma1`           | A working day has no Group 1 permanence-eligible employee on-site                |
+| `missing_perma2`           | A working day has no Group 2 permanence-eligible employee on-site                |
+| `missing_satellite_office` | A satellite office has no on-site coverage during a given week                   |
+| `homework_limit`           | A BE/DE/FR employee exceeded the 35 TT days/year cap                             |
+| `insufficient_onsite`      | An employee's `onsiteCount / (onsiteCount + remoteCount)` < their on-site ratio  |
+
+The 50% on-site denominator deliberately **excludes C0 and JL days** so part-time employees and those with many leave days are not penalised unfairly.
+
+---
+
+### Single-employee regeneration
+
+`POST /planning/:y/:m/generate/employee/:empId` runs the same pipeline but:
+
+- Pre-loads all colleagues' current entries as `lockedEntries` so coverage and desk pools see them.
+- Only persists the entries belonging to `:empId`.
+- Permanence/SPOC rotations are inherited from the existing month so the regenerated employee stays consistent.
+
+---
 
 ### Holiday-scaling rule
 
@@ -311,6 +489,10 @@ Holiday-type codes (`type='holiday'`, e.g. `C0`) are always pro-rated by contrac
 - `artifacts/api-server/src/lib/planner.ts` → `hoursForCode()`
 - `artifacts/api-server/src/routes/planning.ts` → confirm route PRM diff
 - `artifacts/hr-planner/src/pages/planning.tsx` → `getEmployeePlannedHours()`
+
+The PRM counter is intentionally **never** subtracted from `empContractualHours` in the planner. Doing so used to clamp PRM to ±10h and force an extra "substitution JL" on full-time employees with positive PRM (the original "double JL" bug). PRM is now updated organically by the confirm route based on actual planned hours vs contractual target.
+
+---
 
 ### Confirming a plan
 
@@ -321,6 +503,21 @@ Holiday-type codes (`type='holiday'`, e.g. `C0`) are always pro-rated by contrac
 3. Decrements `holidays_taken` for every `C0` entry.
 4. Increments `homework_taken` for every TT day used by BE/DE/FR coworkers.
 5. Marks the month `confirmed=true` (further edits require unlock).
+
+---
+
+### Key helpers in `planner.ts`
+
+| Function                      | Responsibility                                                          |
+|-------------------------------|-------------------------------------------------------------------------|
+| `generatePlanning`            | Top-level entry point used by `POST /planning/:y/:m/generate`           |
+| `hoursForCode`                | Returns hours for a code, applying contract-% scaling (incl. holidays)  |
+| `bestCodeByTarget`            | Picks the allowed code closest to today's daily target (overshoot-averse) |
+| `distributeJlDays`            | Spreads pre-config JL days evenly, biased to JL-preference weekdays     |
+| `pickJlSubstitutionDates`     | Three-tier picker for additional JL substitutions                       |
+| `predetermineWeeklyTypes`     | Locks each ISO week to onsite/homework/cowork                           |
+| `getWorkingDays`              | Mon–Fri minus public holidays                                            |
+| `getWeekNumber`               | ISO Monday of a date string                                             |
 
 ---
 
